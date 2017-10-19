@@ -24,7 +24,16 @@ class Game:
             if suggestions:
                 await self.bot.say("Let's play some {}!".format(random.choice(suggestions)))
             else:
-                await self.bot.say("You do not have any games, go buy some!")
+                await self.bot.say("""
+                You do not have any games, go get some!
+
+                Once you do, you can either add them directly (`add`) or link your Steam profile (`steamlink`) by:
+
+                1. `[p]game add <game>`
+                2. `[p]game steamlink <steam_id>` (or your steam name if you have a custom URL at steamcommunity.com/id/<name>)
+
+                Use `[p]help game` to get a full list of commands that are available to you.
+                """)
 
     @game.command(pass_context=True)
     async def add(self, ctx, game):
@@ -143,9 +152,9 @@ class Game:
     @game.command(pass_context=True)
     async def suggest(self, ctx, choice=None):
         """
-        List out common games of all online users (or users in voice channels)
+        List out games common to all online users (or users in voice channels)
 
-        choice: (Optional) Either 'online' (for all online users) or 'voice' (for all users in a voice channel))
+        choice: (Optional) Either 'online' (for all online users; excluding users with 'dnd' status) or 'voice' (for all users in a voice channel))
         """
 
         if choice is None or choice.lower() in ("online", "voice"):
@@ -160,14 +169,14 @@ class Game:
             else:
                 await self.bot.say("You have exactly **zero** games in common, go buy a 4-pack!")
         else:
-            await self.bot.say("Please enter a valid filter -> either use `online` (default) to get a random suggested game common to all online users or `voice` for all users in a voice channel")
+            await self.bot.say("Please enter a valid filter -> either use `online` (default) for all online users or `voice` for all users in a voice channel")
 
     @game.command(pass_context=True)
     async def poll(self, ctx, choice=None):
         """
         Poll from the common games of all online users (or users in voice channels)
 
-        choice: (Optional) Either 'online' (for all online users) or 'voice' (for all users in a voice channel))
+        choice: (Optional) Either 'online' (for all online users; excluding users with 'dnd' status) or 'voice' (for all users in a voice channel))
         """
 
         if choice is None or choice.lower() in ("online", "voice"):
@@ -182,7 +191,7 @@ class Game:
             else:
                 await self.bot.say("You have exactly **zero** games in common, go buy a 4-pack!")
         else:
-            await self.bot.say("Please enter a valid filter -> either use `online` (default) to get a random suggested game common to all online users or `voice` for all users in a voice channel")
+            await self.bot.say("Please enter a valid filter -> either use `online` (default) for all online users or `voice` for all users in a voice channel")
 
     @game.command(pass_context=True)
     async def steamlink(self, ctx, id, user: discord.Member=None):
@@ -221,10 +230,20 @@ class Game:
 
         await self.bot.say("{}'s account has been linked with Steam.".format(user.mention))
 
-        # Update the user's library with their Steam games
-        set_steam_games(ids[user.id], user.id)
+        # Update the user's Steam games with their permission
+        def check(message):
+            if message.content.strip().lower() in ("yes", "no"):
+                return True
 
-        await self.bot.say("{}, your Steam games have been updated!".format(user.mention))
+        await self.bot.say("Do you want to update your library with your Steam games? (yes/no)")
+        msg = await self.bot.wait_for_message(author=user, timeout=15, check=check)
+        msg = msg.content.strip().lower()
+
+        if msg == "yes":
+            set_steam_games(ids[user.id], user.id)
+            await self.bot.say("{}, your Steam games have been updated!".format(user.mention))
+        elif msg == "no":
+            await self.bot.say("Fair enough. If you would like to update your games later, please run `[p]game update`.")
 
     @game.command(pass_context=True)
     async def update(self, ctx, user: discord.Member=None):
