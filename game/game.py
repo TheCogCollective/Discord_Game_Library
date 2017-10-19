@@ -17,7 +17,7 @@ class Game:
     async def game(self, ctx):
         "Get a random game common to all online users"
 
-        # Checks if a subcommand has been passed or not
+        # Check if a subcommand has been passed or not
         if ctx.invoked_subcommand is None:
             suggestions = get_suggestions(get_users(ctx))
 
@@ -37,7 +37,11 @@ class Game:
 
     @game.command(pass_context=True)
     async def add(self, ctx, game):
-        "Add a game to your game list"
+        """
+        Add a game to your game list
+
+        game: Name of the game
+        """
 
         user = ctx.message.author
 
@@ -49,7 +53,12 @@ class Game:
     @game.command(pass_context=True)
     @checks.admin_or_permissions(manage_messages=True)
     async def addto(self, ctx, game, user):
-        "Add a game to any user's game list"
+        """
+        (Admin) Add a game to any user's game list
+
+        game: Name of the game
+        user: The user's library into which the game should be added
+        """
 
         if add(game, user.id):
             await self.bot.say("{} was added to {}'s' library.".format(game, user.nick))
@@ -58,7 +67,11 @@ class Game:
 
     @game.command(pass_context=True)
     async def remove(self, ctx, game):
-        "Remove a game from your game list"
+        """
+        Remove a game from your game list
+
+        game: Name of the game
+        """
 
         user = ctx.message.author
 
@@ -70,7 +83,12 @@ class Game:
     @game.command(pass_context=True)
     @checks.admin_or_permissions(manage_messages=True)
     async def removefrom(self, ctx, game, user):
-        "Remove a game from any user's game list"
+        """
+        (Admin) Remove a game from the given user's game list
+
+        game: Name of the game
+        user: The user's library from which to remove the game
+        """
 
         if remove(game, user.id):
             await self.bot.say("{} was removed from {}'s' library.".format(game, user.nick))
@@ -80,20 +98,42 @@ class Game:
     @game.command(pass_context=True)
     @checks.admin_or_permissions(manage_messages=True)
     async def removeuser(self, ctx, user: discord.Member=None):
-        "Remove a user from the roster"
+        """
+        Delete your library from the roster (or delete another user's library)
 
-        game_list = get_games()
+        user: (Admin) If given, delete the user's library, otherwise delete the current user's library
+        """
 
+        # Remove the current user from the library
+        if not user:
+            user = ctx.message.author
+
+            def check(message):
+                if message.content.strip().lower() in ("yes", "no"):
+                    return True
+
+            await self.bot.say("Are you sure you want to delete your library? (yes/no)")
+            response = await self.bot.wait_for_message(author=user, timeout=15, check=check)
+            response = response.content.strip().lower()
+
+            if response == "yes":
+                delete_key(user.id)
+                await self.bot.say("{}, you are way out of this league.".format(user.mention))
+            elif response == "no":
+                await self.bot.say("That user does not exist in this league.")
+            return
+
+        # Remove the given user from the library
         if check_key(user.id):
-            del game_list[user.id]
-            dataIO.save_json("data/game/games.json", game_list)
+            delete_key(user.id)
             await self.bot.say("{}, you are way out of this league.".format(user.mention))
         else:
             await self.bot.say("That user does not exist in this league.")
 
     @game.command(pass_context=True)
     async def check(self, ctx, game, user: discord.Member=None):
-        """Checks if a game exists in a user's (or all users') library
+        """
+        Check if a game exists in a user's library (or all users' libraries)
 
         game: Name of the game
         user: (Optional) If given, check the user's library, otherwise check all user libraries
@@ -101,8 +141,8 @@ class Game:
 
         game_list = get_games()
 
+        # Check if a user has the game
         if user:
-            # Checks if a user has the game
             if game in game_list[user.id]:
                 await self.bot.say("Aye {}, you have {} in your library.".format(user.mention, game))
             else:
@@ -111,7 +151,7 @@ class Game:
 
         users_with_games = []
 
-        # Checks which user(s) has the game
+        # Check which users have the game
         for userid, games in game_list.items():
             if game in games:
                 player = ctx.message.server.get_member(userid)
@@ -236,18 +276,22 @@ class Game:
                 return True
 
         await self.bot.say("Do you want to update your library with your Steam games? (yes/no)")
-        msg = await self.bot.wait_for_message(author=user, timeout=15, check=check)
-        msg = msg.content.strip().lower()
+        response = await self.bot.wait_for_message(author=user, timeout=15, check=check)
+        response = response.content.strip().lower()
 
-        if msg == "yes":
+        if response == "yes":
             set_steam_games(ids[user.id], user.id)
             await self.bot.say("{}, your Steam games have been updated!".format(user.mention))
-        elif msg == "no":
+        elif response == "no":
             await self.bot.say("Fair enough. If you would like to update your games later, please run `[p]game update`.")
 
     @game.command(pass_context=True)
     async def update(self, ctx, user: discord.Member=None):
-        "Update a user's Steam game library"
+        """
+        Update a user's Steam game library
+
+        user: If given, update the user's Steam games, otherwise default to user of the message
+        """
 
         if not user:
             user = ctx.message.author
@@ -320,6 +364,12 @@ def check_key(userid):
 def create_key(userid):
     game_list = get_games()
     game_list[userid] = []
+    dataIO.save_json("data/game/games.json", game_list)
+
+
+def delete_key(userid):
+    game_list = get_games()
+    del game_list[userid]
     dataIO.save_json("data/game/games.json", game_list)
 
 
