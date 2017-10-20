@@ -1,4 +1,5 @@
 import json
+import os
 import random
 
 import discord
@@ -307,10 +308,6 @@ class Game:
         await self.bot.say("{}, your Steam games have been updated!".format(user.mention))
 
 
-def setup(bot):
-    bot.add_cog(Game(bot))
-
-
 def check_response(message):
     if message.content.strip().lower() in ("y", "n", "yes", "no"):
         return True
@@ -470,3 +467,27 @@ def create_strawpoll(title, options):
         return json.loads(resp.text)['id']
     except:
         return False
+
+
+def check_folders():
+    if not os.path.exists("data/game"):
+        print("Creating data/game folder...")
+        os.makedirs("data/game")
+
+
+def check_files():
+    f = "data/game/games.json"
+    if not dataIO.is_valid_json(f):
+        print("Creating an empty games.json file...")
+        dataIO.save_json(f, {})
+
+    f = "data/game/steamids.json"
+    if not dataIO.is_valid_json(f):
+        print("Creating an empty steamids.json file...")
+        dataIO.save_json(f, {})
+
+
+def setup(bot):
+    check_folders()
+    check_files()
+    bot.add_cog(Game(bot))
