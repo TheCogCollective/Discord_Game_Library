@@ -103,13 +103,17 @@ class Game:
 
         await self.bot.say(warning("Are you sure you want to delete your library? (yes/no)"))
         response = await self.bot.wait_for_message(author=user, timeout=15, check=check_response)
-        response = response.content.strip().lower()
 
-        if response in "yes":
-            delete_key(user.id)
-            await self.bot.say("{}, you are way out of this league.".format(user.mention))
-        elif response in "no":
-            await self.bot.say("Well, that was close!")
+        if response:
+            response = response.content.strip().lower()
+
+            if response in "yes":
+                delete_key(user.id)
+                await self.bot.say("{}, you are way out of this league.".format(user.mention))
+            elif response in "no":
+                await self.bot.say("Well, that was close!")
+        else:
+            await self.bot.say("Yeah, that's what I thought.")
 
     @game.command(pass_context=True)
     @checks.admin_or_permissions(manage_messages=True)
@@ -269,13 +273,17 @@ class Game:
         # Update the user's Steam games with their permission
         await self.bot.say(question("Do you want to update your library with your Steam games? (yes/no)"))
         response = await self.bot.wait_for_message(author=user, timeout=15, check=check_response)
-        response = response.content.strip().lower()
 
-        if response in "yes":
-            set_steam_games(ids[user.id], user.id)
-            await self.bot.say("{}, your Steam games have been updated!".format(user.mention))
-        elif response in "no":
-            await self.bot.say("Fair enough. If you would like to update your games later, please run `{}game update`.".format(ctx.prefix))
+        if response:
+            response = response.content.strip().lower()
+
+            if response in "yes":
+                set_steam_games(ids[user.id], user.id)
+                await self.bot.say("{}, your Steam games have been updated!".format(user.mention))
+            elif response in "no":
+                await self.bot.say("Fair enough. If you would like to update your games later, please run `{}game update`.".format(ctx.prefix))
+        else:
+            await self.bot.say("Too late, but you can still use `{}game update` to update your games.".format(ctx.prefix))
 
     @game.command(pass_context=True)
     async def update(self, ctx, user: discord.Member=None):
