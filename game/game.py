@@ -96,34 +96,30 @@ class Game:
             await self.bot.say("{} does not have this game in their library.".format(user.nick))
 
     @game.command(pass_context=True)
+    async def removelib(self, ctx):
+        "Delete your library"
+
+        user = ctx.message.author
+
+        await self.bot.say("Are you sure you want to delete your library? (yes/no)")
+        response = await self.bot.wait_for_message(author=user, timeout=15, check=check_response)
+        response = response.content.strip().lower()
+
+        if response in "yes":
+            delete_key(user.id)
+            await self.bot.say("{}, you are way out of this league.".format(user.mention))
+        elif response in "no":
+            await self.bot.say("Well, that was close!")
+
+    @game.command(pass_context=True)
     @checks.admin_or_permissions(manage_messages=True)
-    async def removeuser(self, ctx, user: discord.Member=None):
+    async def removeuser(self, ctx, user: discord.Member):
         """
-        Delete your library from the roster (or delete another user's library)
+        (Admin) Delete another user's library
 
-        user: (Admin) If given, delete the user's library, otherwise delete the current user's library
+        user: The user whose library should be deleted
         """
 
-        # Remove the current user from the library
-        if not user:
-            user = ctx.message.author
-
-            def check(message):
-                if message.content.strip().lower() in ("yes", "no"):
-                    return True
-
-            await self.bot.say("Are you sure you want to delete your library? (yes/no)")
-            response = await self.bot.wait_for_message(author=user, timeout=15, check=check)
-            response = response.content.strip().lower()
-
-            if response == "yes":
-                delete_key(user.id)
-                await self.bot.say("{}, you are way out of this league.".format(user.mention))
-            elif response == "no":
-                await self.bot.say("That user does not exist in this league.")
-            return
-
-        # Remove the given user from the library
         if check_key(user.id):
             delete_key(user.id)
             await self.bot.say("{}, you are way out of this league.".format(user.mention))
@@ -271,18 +267,14 @@ class Game:
         await self.bot.say("{}'s account has been linked with Steam.".format(user.mention))
 
         # Update the user's Steam games with their permission
-        def check(message):
-            if message.content.strip().lower() in ("yes", "no"):
-                return True
-
         await self.bot.say("Do you want to update your library with your Steam games? (yes/no)")
-        response = await self.bot.wait_for_message(author=user, timeout=15, check=check)
+        response = await self.bot.wait_for_message(author=user, timeout=15, check=check_response)
         response = response.content.strip().lower()
 
-        if response == "yes":
+        if response in "yes":
             set_steam_games(ids[user.id], user.id)
             await self.bot.say("{}, your Steam games have been updated!".format(user.mention))
-        elif response == "no":
+        elif response in "no":
             await self.bot.say("Fair enough. If you would like to update your games later, please run `[p]game update`.")
 
     @game.command(pass_context=True)
@@ -311,12 +303,69 @@ def setup(bot):
     bot.add_cog(Game(bot))
 
 
+def check_response(message):
+    if message.content.strip().lower() in ("y", "n", "yes", "no"):
+        return True
+
+
+def add(game, userid):
+    game_list = get_games()
+
+    if check_key(userid):
+        if game_list[userid]:
+            if game in game_list[userid]:
+                return False
+            else:
+                game_list[userid].append(game)
+        else:
+            game_list[userid] = [game]
+    else:
+        create_key(userid)
+        game_list[userid] = [game]
+
+    dataIO.save_json("data/game/games.json", game_list)
+    return True
+
+
+def remove(game, userid):
+    game_list = get_games()
+
+    if check_key(userid):
+        if game not in game_list[userid]:
+            return False
+        else:
+            game_list[userid].remove(game)
+            dataIO.save_json("data/game/games.json", game_list)
+            return True
+    else:
+        create_key(userid)
+        return False
+
+
+def get_steam_ids():
+    return dataIO.load_json("data/game/steamids.json")
+
+
+def get_user_steam_id(userid):
+    ids = get_steam_ids()
+    return ids.get(userid, None)
+
+
 def get_games(userid=None):
     games = dataIO.load_json("data/game/games.json")
     if not userid:
         return games
     else:
         return games[userid]
+
+
+def get_steam_games(id):
+    url = "https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key=key&steamid={id}&include_appinfo=1&format=json".format(
+        id=id)
+    r = requests.get(url)
+    games = [game.get('name') for game in json.loads(r.text).get(
+        'response').get('games') if check_category(game.get('appid'))]
+    return games
 
 
 def set_steam_games(steamid, userid):
@@ -333,22 +382,10 @@ def set_steam_games(steamid, userid):
     dataIO.save_json("data/game/games.json", game_list)
 
 
-def get_steam_ids():
-    return dataIO.load_json("data/game/steamids.json")
-
-
-def get_user_steam_id(userid):
-    ids = get_steam_ids()
-    return ids.get(userid, None)
-
-
-def get_steam_games(id):
-    url = "https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key=key&steamid={id}&include_appinfo=1&format=json".format(
-        id=id)
-    r = requests.get(url)
-    games = [game.get('name') for game in json.loads(r.text).get(
-        'response').get('games') if check_category(game.get('appid'))]
-    return games
+def create_key(userid):
+    game_list = get_games()
+    game_list[userid] = []
+    dataIO.save_json("data/game/games.json", game_list)
 
 
 def check_key(userid):
@@ -359,12 +396,6 @@ def check_key(userid):
         return True
     else:
         return False
-
-
-def create_key(userid):
-    game_list = get_games()
-    game_list[userid] = []
-    dataIO.save_json("data/game/games.json", game_list)
 
 
 def delete_key(userid):
@@ -430,38 +461,4 @@ def create_strawpoll(title, options):
     try:
         return json.loads(resp.text)['id']
     except:
-        return False
-
-
-def add(game, userid):
-    game_list = get_games()
-
-    if check_key(userid):
-        if game_list[userid]:
-            if game in game_list[userid]:
-                return False
-            else:
-                game_list[userid].append(game)
-        else:
-            game_list[userid] = [game]
-    else:
-        create_key(userid)
-        game_list[userid] = [game]
-
-    dataIO.save_json("data/game/games.json", game_list)
-    return True
-
-
-def remove(game, userid):
-    game_list = get_games()
-
-    if check_key(userid):
-        if game not in game_list[userid]:
-            return False
-        else:
-            game_list[userid].remove(game)
-            dataIO.save_json("data/game/games.json", game_list)
-            return True
-    else:
-        create_key(userid)
         return False
