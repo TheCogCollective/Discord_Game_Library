@@ -4,7 +4,7 @@ import random
 import discord
 import requests
 from cogs.utils import checks
-from cogs.utils.chat_formatting import box, pagify
+from cogs.utils.chat_formatting import box, pagify, question, warning
 from cogs.utils.dataIO import dataIO
 from discord.ext import commands
 
@@ -29,11 +29,11 @@ class Game:
 
                 Once you do, you can either add them directly (`add`) or link your Steam profile (`steamlink`) by:
 
-                1. `[p]game add <game>`
-                2. `[p]game steamlink <steam_id>` (or your steam name if you have a custom URL at steamcommunity.com/id/<name>)
+                1. `{p}game add <game>`
+                2. `{p}game steamlink <steam_id>` (or your steam name if you have a custom URL at steamcommunity.com/id/<name>)
 
-                Use `[p]help game` to get a full list of commands that are available to you.
-                """)
+                Use `{p}help game` to get a full list of commands that are available to you.
+                """.format(p=ctx.prefix))
 
     @game.command(pass_context=True)
     async def add(self, ctx, game):
@@ -101,7 +101,7 @@ class Game:
 
         user = ctx.message.author
 
-        await self.bot.say("Are you sure you want to delete your library? (yes/no)")
+        await self.bot.say(warning("Are you sure you want to delete your library? (yes/no)"))
         response = await self.bot.wait_for_message(author=user, timeout=15, check=check_response)
         response = response.content.strip().lower()
 
@@ -183,7 +183,7 @@ class Game:
             for page in message:
                 await self.bot.send_message(author, (box(page)))
         else:
-            await self.bot.say("{}, you do not have any games. Add one using `[p]game add <game_name>` and/or link your Steam profile with `[p]game steamlink <steam_id>`.".format(user.mention))
+            await self.bot.say("{}, you do not have any games. Add one using `{p}game add <game_name>` and/or link your Steam profile with `{p}game steamlink <steam_id>`.".format(user.mention, p=ctx.prefix))
 
     @game.command(pass_context=True)
     async def suggest(self, ctx, choice=None):
@@ -223,7 +223,7 @@ class Game:
                 if id:
                     await self.bot.say("Here's your strawpoll link: https://www.strawpoll.me/{}".format(id))
                 else:
-                    await self.bot.say("Phew! You have way too many games to create a poll. You should try `[p]game suggest` instead.")
+                    await self.bot.say("Phew! You have way too many games to create a poll. You should try `{}game suggest` instead.".format(ctx.prefix))
             else:
                 await self.bot.say("You have exactly **zero** games in common, go buy a 4-pack!")
         else:
@@ -267,7 +267,7 @@ class Game:
         await self.bot.say("{}'s account has been linked with Steam.".format(user.mention))
 
         # Update the user's Steam games with their permission
-        await self.bot.say("Do you want to update your library with your Steam games? (yes/no)")
+        await self.bot.say(question("Do you want to update your library with your Steam games? (yes/no)"))
         response = await self.bot.wait_for_message(author=user, timeout=15, check=check_response)
         response = response.content.strip().lower()
 
@@ -275,7 +275,7 @@ class Game:
             set_steam_games(ids[user.id], user.id)
             await self.bot.say("{}, your Steam games have been updated!".format(user.mention))
         elif response in "no":
-            await self.bot.say("Fair enough. If you would like to update your games later, please run `[p]game update`.")
+            await self.bot.say("Fair enough. If you would like to update your games later, please run `{}game update`.".format(ctx.prefix))
 
     @game.command(pass_context=True)
     async def update(self, ctx, user: discord.Member=None):
