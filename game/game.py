@@ -1,6 +1,7 @@
 import json
 import os
 import random
+from collections import defaultdict
 
 import discord
 import requests
@@ -16,7 +17,7 @@ class Game:
 
     @commands.group(name="game", pass_context=True)
     async def game(self, ctx):
-        "Get a random game common to all online users"
+        "Get a random game common to all online users (excluding 'dnd' users)"
 
         # Check if a subcommand has been passed or not
         if ctx.invoked_subcommand is None:
@@ -140,11 +141,17 @@ class Game:
         user: (Optional) If given, check the user's library, otherwise check all user libraries
         """
 
-        game_list = get_games()
+        game_list = get_library()
 
         # Check if a user has the game
         if user:
-            if game in game_list[user.id]:
+            if not check_key(user.id):
+                await self.bot.say("{} does not have a game library yet. Use {}help game to start adding games!".format(user.nick, ctx.prefix))
+                return
+
+            user_game_list = get_library(user.id)
+
+            if game in user_game_list:
                 await self.bot.say("Aye {}, you have {} in your library.".format(user.mention, game))
             else:
                 await self.bot.say("Nay {}, you do not have that game in your library.".format(user.mention))
@@ -153,11 +160,11 @@ class Game:
         users_with_games = []
 
         # Check which users have the game
-        for userid, games in game_list.items():
-            if game in games:
-                player = ctx.message.server.get_member(userid)
-                if player:
-                    users_with_games.append(player.nick or player.name)
+        for discord_id, user_details in game_list.items():
+            if game in user_details["games"]:
+                user = ctx.message.server.get_member(discord_id)
+                if user:
+                    users_with_games.append(user.nick or user.name)
 
         if not users_with_games:
             await self.bot.say("None of you have {}!".format(game))
@@ -177,10 +184,12 @@ class Game:
         if not user:
             user = author
 
-        game_list = get_games()
+        game_list = get_library()
 
-        if check_key(user.id) and game_list.get(user.id, False):
-            message = pagify(", ".join(sorted(game_list[user.id])), [', '])
+        if check_key(user.id) and game_list.get(user.id).get("games", False):
+            user_game_list = get_library(user.id)
+
+            message = pagify(", ".join(sorted(user_game_list)), [', '])
 
             await self.bot.say("Please check your DM for the full list of games, {}.".format(author.mention))
             await self.bot.send_message(author, "{}'s games:".format(user.mention))
@@ -225,6 +234,7 @@ class Game:
 
             if suggestions:
                 id = create_strawpoll("What to play?", suggestions)
+
                 if id:
                     await self.bot.say("Here's your strawpoll link: https://www.strawpoll.me/{}".format(id))
                 else:
@@ -242,10 +252,7 @@ class Game:
         key: An API key generated at https://steamcommunity.com/dev/apikey (login with your Steam profile and enter any domain to create one)
         """
 
-        ids = get_steam_ids()
-        ids["steam_key"] = key
-        dataIO.save_json("data/game/steamids.json", ids)
-
+        set_steam_key(key)
         await self.bot.say("The Steam API key has been successfully added! Delete the previous message for your own safety!")
 
     @game.command(pass_context=True)
@@ -260,12 +267,12 @@ class Game:
         if not user:
             user = ctx.message.author
 
-        ids = get_steam_ids()
+        game_list = get_library()
 
-        # Either use given 64-bit ID or convert string to a 64-bit Steam ID
+        # Either use given 64-bit Steam ID, or convert given name to a 64-bit Steam ID
         try:
-            id = int(id)
-            ids[user.id] = id
+            int(id)
+            game_list[user.id]["steam_id"] = id
         except:
             key = get_steam_key()
 
@@ -276,18 +283,15 @@ class Game:
                 response = json.loads(r.text).get('response')
 
                 if response.get('success') == 1:
-                    ids[user.id] = response.get('steamid')
+                    game_list[user.id]["steam_name"] = id
+                    game_list[user.id]["steam_id"] = response.get('steamid')
                 else:
                     await self.bot.say("{}, there was a problem linking your Steam name. Please try again with your 64-bit Steam ID instead.".format(user.mention))
+                    return
             else:
                 await self.bot.say("Sorry, you need a Steam API key to make requests to Steam. Use `{}game steamkey` for more information.".format(ctx.prefix))
                 return
-
-        dataIO.save_json("data/game/steamids.json", ids)
-
-        if not check_key(user.id):
-            game_list = get_games()
-            game_list[user.id] = None
+        finally:
             dataIO.save_json("data/game/games.json", game_list)
 
         await self.bot.say("{}'s account has been linked with Steam.".format(user.mention))
@@ -300,7 +304,7 @@ class Game:
             response = response.content.strip().lower()
 
             if response in "yes":
-                set_steam_games(ids[user.id], user.id)
+                set_steam_games(game_list[user.id]["steam_id"], user.id)
                 await self.bot.say("{}, your Steam games have been updated!".format(user.mention))
             elif response in "no":
                 await self.bot.say("Fair enough. If you would like to update your games later, please run `{}game update`.".format(ctx.prefix))
@@ -322,7 +326,7 @@ class Game:
         key = get_steam_key()
 
         if not id:
-            await self.bot.say("{}, your Discord ID is not yet linked with a Steam ID.".format(user.mention))
+            await self.bot.say("{}, your Discord ID is not yet connected to a Steam profile. Use `{}game steamlink` to link them.".format(user.mention, ctx.prefix))
             return
 
         if key:
@@ -332,65 +336,70 @@ class Game:
             await self.bot.say("Sorry, you need a Steam API key to make requests to Steam. Use `{}game steamkey` for more information.".format(ctx.prefix))
 
 
-def check_response(message):
-    if message.content.strip().lower() in ("y", "n", "yes", "no"):
-        return True
+def get_library(discord_id=None):
+    games_list = dataIO.load_json("data/game/games.json")
+
+    if discord_id:
+        return games_list.get(discord_id).get("games")
+    else:
+        return defaultdict(dict, games_list)
 
 
-def add(game, userid):
-    game_list = get_games()
+def add(game, discord_id):
+    game_list = get_library()
 
-    if check_key(userid):
-        if game_list[userid]:
-            if game in game_list[userid]:
+    if check_key(discord_id):
+        user_game_list = get_library(discord_id)
+
+        if user_game_list:
+            if game in user_game_list:
                 return False
             else:
-                game_list[userid].append(game)
+                game_list[discord_id]["games"].append(game)
         else:
-            game_list[userid] = [game]
+            game_list[discord_id]["games"] = [game]
     else:
-        create_key(userid)
-        game_list[userid] = [game]
+        create_key(discord_id)
+
+        # Refresh game_list object with the new discord_id
+        game_list = get_library()
+        game_list[discord_id]["games"].append(game)
 
     dataIO.save_json("data/game/games.json", game_list)
     return True
 
 
-def remove(game, userid):
-    game_list = get_games()
+def remove(game, discord_id):
+    game_list = get_library()
 
-    if check_key(userid):
-        if game not in game_list[userid]:
+    if check_key(discord_id):
+        user_game_list = get_library(discord_id)
+
+        if game not in user_game_list:
             return False
         else:
-            game_list[userid].remove(game)
+            game_list[discord_id]["games"].remove(game)
             dataIO.save_json("data/game/games.json", game_list)
             return True
     else:
-        create_key(userid)
+        create_key(discord_id)
         return False
 
 
-def get_steam_ids():
-    return dataIO.load_json("data/game/steamids.json")
-
-
-def get_user_steam_id(userid):
-    ids = get_steam_ids()
-    return ids.get(userid, None)
+def set_steam_key(key):
+    settings = dataIO.load_json("data/game/settings.json")
+    settings["steam_key"] = key
+    dataIO.save_json("data/game/settings.json", settings)
 
 
 def get_steam_key():
-    ids = get_steam_ids()
-    return ids.get("steam_key", False)
+    settings = dataIO.load_json("data/game/settings.json")
+    return settings.get("steam_key", False)
 
 
-def get_games(userid=None):
-    games = dataIO.load_json("data/game/games.json")
-    if not userid:
-        return games
-    else:
-        return games[userid]
+def get_user_steam_id(discord_id):
+    ids = dataIO.load_json("data/game/games.json")
+    return ids.get(discord_id).get("steam_id", False)
 
 
 def get_steam_games(id):
@@ -407,44 +416,45 @@ def get_steam_games(id):
         return False
 
 
-def set_steam_games(steamid, userid):
-    steam_games = get_steam_games(steamid)
+def set_steam_games(steam_id, discord_id):
+    steam_games = get_steam_games(steam_id)
 
     if steam_games:
-        game_list = get_games()
-        user_game_list = game_list.get(userid)
+        game_list = get_library()
+        user_game_list = game_list.get(discord_id).get("games")
 
         if user_game_list:
             user_game_list.extend(steam_games)
         else:
             user_game_list = steam_games
 
-        game_list[userid] = list(set(user_game_list))
+        game_list[discord_id]["games"] = list(set(user_game_list))
         dataIO.save_json("data/game/games.json", game_list)
     else:
         return False
 
 
-def create_key(userid):
-    game_list = get_games()
-    game_list[userid] = []
+def create_key(discord_id):
+    game_list = get_library()
+    game_list[discord_id]["games"] = []
     dataIO.save_json("data/game/games.json", game_list)
 
 
-def check_key(userid):
-    game_list = get_games()
-    key_list = game_list.keys()
+def check_key(discord_id):
+    game_list = get_library()
 
-    if userid in key_list:
+    if discord_id in game_list:
         return True
     else:
         return False
 
 
-def delete_key(userid):
-    game_list = get_games()
-    del game_list[userid]
-    dataIO.save_json("data/game/games.json", game_list)
+def delete_key(discord_id):
+    game_list = get_library()
+
+    if discord_id in game_list:
+        del game_list[discord_id]
+        dataIO.save_json("data/game/games.json", game_list)
 
 
 def check_category(id):
@@ -464,14 +474,14 @@ def get_suggestions(users):
     if not users:
         return
 
-    game_list = get_games()
+    users_game_list = [get_library(user) for user in users]
 
-    # Get only games for the provided list of users
-    user_game_list = [game_list.get(user, []) for user in users]
-    user_game_list = list(filter(None.__ne__, user_game_list))
+    # Sometimes there are some None...
+    users_game_list = list(filter(None.__ne__, users_game_list))
 
-    if user_game_list:
-        suggestions = set(user_game_list[0]).intersection(*user_game_list[1:])
+    if users_game_list:
+        suggestions = set(users_game_list[0]).intersection(
+            *users_game_list[1:])
         return sorted(list(suggestions))
 
 
@@ -480,7 +490,7 @@ def get_users(ctx, choice=None):
 
     if choice is None or choice.lower == "online":
         for user in ctx.message.server.members:
-            if user.status.name == "online" and not user.bot:
+            if user.status.name in ("idle", "online") and not user.bot:
                 users.append(user.id)
     elif choice.lower() == "voice":
         for channel in ctx.message.server.channels:
@@ -507,6 +517,11 @@ def create_strawpoll(title, options):
         return False
 
 
+def check_response(message):
+    if message.content.strip().lower() in ("y", "n", "yes", "no"):
+        return True
+
+
 def check_folders():
     if not os.path.exists("data/game"):
         print("Creating data/game folder...")
@@ -517,11 +532,11 @@ def check_files():
     f = "data/game/games.json"
     if not dataIO.is_valid_json(f):
         print("Creating an empty games.json file...")
-        dataIO.save_json(f, {})
+        dataIO.save_json(f, defaultdict(dict))
 
-    f = "data/game/steamids.json"
+    f = "data/game/settings.json"
     if not dataIO.is_valid_json(f):
-        print("Creating an empty steamids.json file...")
+        print("Creating the default settings.json file...")
         dataIO.save_json(f, {})
 
 
