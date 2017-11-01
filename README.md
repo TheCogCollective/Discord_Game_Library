@@ -32,4 +32,4 @@ All the following commands need to be prefixed with '[p]game'. For example, if y
 
 ---
 
-Made with <3 by [Alchez](https://github.com/Alchez) and [vjFaLk](https://github.com/vjFaLk)
+Made with ♥ by [Alchez](https://github.com/Alchez) and [vjFaLk](https://github.com/vjFaLk)
