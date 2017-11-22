@@ -5,10 +5,11 @@ from collections import defaultdict
 
 import discord
 import requests
+from discord.ext import commands
+
 from cogs.utils import checks
 from cogs.utils.chat_formatting import box, pagify, question, warning
 from cogs.utils.dataIO import dataIO
-from discord.ext import commands
 
 
 class Game:
@@ -233,10 +234,10 @@ class Game:
             suggestions = get_suggestions(get_users(ctx, choice))
 
             if suggestions:
-                id = create_strawpoll("What to play?", suggestions)
+                poll_id = create_strawpoll("What to play?", suggestions)
 
-                if id:
-                    await self.bot.say("Here's your strawpoll link: https://www.strawpoll.me/{}".format(id))
+                if poll_id:
+                    await self.bot.say("Here's your strawpoll link: https://www.strawpoll.me/{}".format(poll_id))
                 else:
                     await self.bot.say("Phew! You have way too many games to create a poll. You should try `{}game suggest` instead.".format(ctx.prefix))
             else:
@@ -256,7 +257,7 @@ class Game:
         await self.bot.say("The Steam API key has been successfully added! Delete the previous message for your own safety!")
 
     @game.command(pass_context=True)
-    async def steamlink(self, ctx, id, user: discord.Member=None):
+    async def steamlink(self, ctx, steam_id, user: discord.Member=None):
         """
         Link a Steam profile with a Discord ID
 
@@ -271,19 +272,18 @@ class Game:
 
         # Either use given 64-bit Steam ID, or convert given name to a 64-bit Steam ID
         try:
-            int(id)
-            game_list[user.id]["steam_id"] = id
-        except:
+            int(steam_id)
+        except ValueError:
             key = get_steam_key()
 
             if key:
                 url = "https://api.steampowered.com/ISteamUser/ResolveVanityURL/v0001/?key={key}&vanityurl={id}&format=json".format(
-                    key=key, id=id)
+                    key=key, id=steam_id)
                 r = requests.get(url)
                 response = json.loads(r.text).get('response')
 
                 if response.get('success') == 1:
-                    game_list[user.id]["steam_name"] = id
+                    game_list[user.id]["steam_name"] = steam_id
                     game_list[user.id]["steam_id"] = response.get('steamid')
                 else:
                     await self.bot.say("{}, there was a problem linking your Steam name. Please try again with your 64-bit Steam ID instead.".format(user.mention))
@@ -291,6 +291,8 @@ class Game:
             else:
                 await self.bot.say("Sorry, you need a Steam API key to make requests to Steam. Use `{}game steamkey` for more information.".format(ctx.prefix))
                 return
+        else:
+            game_list[user.id]["steam_id"] = steam_id
         finally:
             dataIO.save_json("data/game/games.json", game_list)
 
@@ -322,15 +324,15 @@ class Game:
         if not user:
             user = ctx.message.author
 
-        id = get_user_steam_id(user.id)
+        steam_id = get_user_steam_id(user.id)
         key = get_steam_key()
 
-        if not id:
+        if not steam_id:
             await self.bot.say("{}, your Discord ID is not yet connected to a Steam profile. Use `{}game steamlink` to link them.".format(user.mention, ctx.prefix))
             return
 
         if key:
-            set_steam_games(id, user.id)
+            set_steam_games(steam_id, user.id)
             await self.bot.say("{}, your Steam games have been updated!".format(user.mention))
         else:
             await self.bot.say("Sorry, you need a Steam API key to make requests to Steam. Use `{}game steamkey` for more information.".format(ctx.prefix))
@@ -402,12 +404,12 @@ def get_user_steam_id(discord_id):
     return ids.get(discord_id).get("steam_id", False)
 
 
-def get_steam_games(id):
+def get_steam_games(steam_id):
     key = get_steam_key()
 
     if key:
         url = "https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key={key}&steamid={id}&include_appinfo=1&format=json".format(
-            key=key, id=id)
+            key=key, id=steam_id)
         r = requests.get(url)
         games = [game.get('name') for game in json.loads(
             r.text).get('response').get('games')]
