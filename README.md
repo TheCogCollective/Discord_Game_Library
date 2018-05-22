@@ -1,4 +1,6 @@
 # Game Library Cog for [RedBot](https://github.com/Cog-Creators/Red-DiscordBot)
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2FAlchez%2FDiscord_Game_Library.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2FAlchez%2FDiscord_Game_Library?ref=badge_shield)
+
 A Discord cog for creating user game lists, finding game list intersections, and some more stuff.
 
 ## Commands:
@@ -33,3 +35,7 @@ All the following commands need to be prefixed with '[p]game'. For example, if y
 ---
 
 Made with ♥ by [Alchez](https://github.com/Alchez) and [vjFaLk](https://github.com/vjFaLk)
+
+
+## License
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2FAlchez%2FDiscord_Game_Library.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2FAlchez%2FDiscord_Game_Library?ref=badge_large)
