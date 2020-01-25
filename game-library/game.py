@@ -5,13 +5,12 @@ from collections import defaultdict
 
 import discord
 import requests
-from discord.ext import commands
-from redbot.core import Config, checks
-from redbot.core.json_io import JsonIO
+from redbot.core.config import Config
+from redbot.core import commands, checks
 from redbot.core.utils.chat_formatting import box, pagify, question, warning
 
 
-class Game:
+class Game(commands.Cog):
     def __init__(self, bot):
         self.config = Config.get_conf(self, identifier=28784542245, force_registration=True)
 
@@ -269,7 +268,7 @@ class Game:
         """
 
         await self.config.steamkey.set(key)
-        await ctx.send("Steam key: {}".format("True" if self.config.steamkey() else "False"))
+        await ctx.send("Steam key: {}".format("True" if await self.config.steamkey() else "False"))
         await ctx.send("The Steam API key has been successfully added! Delete the previous message for your own safety!")
 
     @game.command()
@@ -284,13 +283,14 @@ class Game:
         if not user:
             user = ctx.author
 
-        game_list = get_library()
+        # game_list = get_library(user=ctx.author)
+        game_list = []
 
         # Either use given 64-bit Steam ID, or convert given name to a 64-bit Steam ID
         try:
             int(steam_id)
         except ValueError:
-            key = get_steam_key()
+            key = await self.config.steamkey()
 
             if key:
                 url = "https://api.steampowered.com/ISteamUser/ResolveVanityURL/v0001/?key={key}&vanityurl={id}&format=json".format(
@@ -298,36 +298,16 @@ class Game:
                 r = requests.get(url)
                 response = json.loads(r.text).get('response')
 
-                if response.get('success') == 1:
-                    game_list[user.id]["steam_name"] = steam_id
-                    game_list[user.id]["steam_id"] = response.get('steamid')
-                else:
+                if not response.get('success') == 1:
                     await ctx.send("{}, there was a problem linking your Steam name. Please try again with your 64-bit Steam ID instead.".format(user.mention))
                     return
             else:
                 await ctx.send("Sorry, you need a Steam API key to make requests to Steam. Use `{}game steamkey` for more information.".format(ctx.prefix))
                 return
-        else:
-            game_list[user.id]["steam_id"] = steam_id
-        finally:
-            JsonIO._save_json("data/game/games.json", game_list)
 
+        game_list = await self.get_steam_games(steam_id)
+        await self.config.user(user).games.set(game_list)
         await ctx.send("{}'s account has been linked with Steam.".format(user.mention))
-
-        # Update the user's Steam games with their permission
-        await ctx.send(question("Do you want to update your library with your Steam games? (yes/no)"))
-        response = await self.bot.wait_for_message(author=user, timeout=15, check=check_response)
-
-        if response:
-            response = response.content.strip().lower()
-
-            if response in "yes":
-                set_steam_games(game_list[user.id]["steam_id"], user.id)
-                await ctx.send("{}, your Steam games have been updated!".format(user.mention))
-            elif response in "no":
-                await ctx.send("Fair enough. If you would like to update your games later, please run `{}game update`.".format(ctx.prefix))
-        else:
-            await ctx.send("Too late, but you can still use `{}game update` to update your games.".format(ctx.prefix))
 
     @game.command()
     async def update(self, ctx, user: discord.Member=None):
@@ -354,13 +334,24 @@ class Game:
             await ctx.send("Sorry, you need a Steam API key to make requests to Steam. Use `{}game steamkey` for more information.".format(ctx.prefix))
 
 
-def get_library(discord_id=None):
-    games_list = JsonIO._load_json("data/game/games.json")
+    async def get_library(self, user):
+        games_list = await self.config.user(user).games()
+        return games_list
 
-    if discord_id:
-        return games_list.get(discord_id).get("games")
-    else:
-        return defaultdict(dict, games_list)
+    async def get_steam_games(self, steam_id):
+        key = await self.config.steamkey()
+
+        if key:
+            url = "https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key={key}&steamid={id}&include_appinfo=1&format=json".format(
+                key=key, id=steam_id)
+            r = requests.get(url)
+            print(r.text)
+            games = [game.get('name') for game in json.loads(
+                r.text).get('response').get('games')]
+            return games
+        else:
+            return False
+
 
 
 def add(game, discord_id):
@@ -410,28 +401,9 @@ def set_steam_key(key):
     JsonIO._save_json("data/game/settings.json", settings)
 
 
-def get_steam_key():
-    settings = JsonIO._load_json("data/game/settings.json")
-    return settings.get("steam_key", False)
-
-
 def get_user_steam_id(discord_id):
     ids = JsonIO._load_json("data/game/games.json")
     return ids.get(discord_id).get("steam_id", False)
-
-
-def get_steam_games(steam_id):
-    key = get_steam_key()
-
-    if key:
-        url = "https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key={key}&steamid={id}&include_appinfo=1&format=json".format(
-            key=key, id=steam_id)
-        r = requests.get(url)
-        games = [game.get('name') for game in json.loads(
-            r.text).get('response').get('games')]
-        return games
-    else:
-        return False
 
 
 def set_steam_games(steam_id, discord_id):
