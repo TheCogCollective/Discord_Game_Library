@@ -45,18 +45,18 @@ class Game(commands.Cog):
             suggestions = await self.get_suggestions(users)
 
             if suggestions:
-                await ctx.send("Let's play some {}!".format(random.choice(suggestions)))
+                await ctx.send(f"Let's play some {random.choice(suggestions)}!")
             else:
-                await ctx.send("""
+                await ctx.send(f"""
                 You do not have any games, go get some!
 
                 Once you do, you can either add them directly (`add`) or link your Steam profile (`steamlink`) by:
 
-                1. `{p}game add <game>`
-                2. `{p}game steamlink <steam_id>` (or your steam name if you have a custom URL at steamcommunity.com/id/<name>)
+                1. `{ctx.prefix}game add <game>`
+                2. `{ctx.prefix}game steamlink <steam_id>` (or your steam name if you have a custom URL at steamcommunity.com/id/<name>)
 
-                Use `{p}help game` to get a full list of commands that are available to you.
-                """.format(p=ctx.prefix))
+                Use `{ctx.prefix}help game` to get a full list of commands that are available to you.
+                """)
 
     @game.command()
     async def add(self, ctx, game, user: discord.Member = None):
@@ -77,9 +77,9 @@ class Game(commands.Cog):
         if not game in games:
             games.append(game)
             await self.config.user(user).games.set(games)
-            await ctx.send("{}, {} was added to your library.".format(user.mention, game))
+            await ctx.send(f"{user.mention}, {game} was added to your library.")
         else:
-            await ctx.send("{}, you already have this game in your library.".format(user.mention))
+            await ctx.send(f"{user.mention}, you already have this game in your library.")
 
     @game.command()
     async def remove(self, ctx, game, user: discord.Member = None):
@@ -99,9 +99,9 @@ class Game(commands.Cog):
         if game in games:
             games.remove(game)
             await self.config.user(user).games.set(games)
-            await ctx.send("{}, {} was removed from your library.".format(user.mention, game))
+            await ctx.send(f"{user.mention}, {game} was removed from your library.")
         else:
-            await ctx.send("{}, you don't have this game in your library.".format(user.mention))
+            await ctx.send(f"{user.mention}, you don't have this game in your library.")
 
     @game.command()
     async def destroy(self, ctx, user: discord.Member = None):
@@ -130,7 +130,7 @@ class Game(commands.Cog):
 
             if response in "yes":
                 await self.config.user(user).games.set([])
-                await ctx.send("{}, your game library has been nuked".format(user.mention))
+                await ctx.send(f"{user.mention}, your game library has been nuked")
             elif response in "no":
                 await ctx.send("Well, that was close!")
 
@@ -147,13 +147,13 @@ class Game(commands.Cog):
         if user:
             games = await self.config.user(user).games()
             if not games:
-                await ctx.send("{} does not have a game library yet. Use {}help game to start adding games!".format(user.mention, ctx.prefix))
+                await ctx.send(f"{user.mention} does not have a game library yet. Use {ctx.prefix}help game to start adding games!")
                 return
 
             if game in games:
-                await ctx.send("Aye {}, you have {} in your library.".format(user.mention, game))
+                await ctx.send(f"Aye {user.mention}, you have {game} in your library.")
             else:
-                await ctx.send("Nay {}, you do not have that game in your library.".format(user.mention))
+                await ctx.send(f"Nay {user.mention}, you do not have that game in your library.")
             return
 
         users_with_games = []
@@ -167,9 +167,10 @@ class Game(commands.Cog):
                     users_with_games.append(user.nick or user.name)
 
         if not users_with_games:
-            await ctx.send("None of you have {}!".format(game))
+            await ctx.send(f"None of you have {game}!")
         else:
-            await ctx.send("The following of you have {}: {}".format(game, box("\n".join(users_with_games))))
+            message = box('\n'.join(users_with_games))
+            await ctx.send(f"The following of you have {game}: {message}")
 
     @game.command()
     async def list(self, ctx, user: discord.Member = None):
@@ -188,13 +189,13 @@ class Game(commands.Cog):
 
         if game_list:
             message = pagify(", ".join(sorted(game_list)), [', '])
-            await ctx.send("Please check your DM for the full list of games, {}.".format(author.mention))
-            await author.send("{}'s games:".format(user.mention))
+            await ctx.send(f"Please check your DM for the full list of games, {author.mention}.")
+            await author.send(f"{user.mention}'s games:")
 
             for page in message:
                 await author.send((box(page)))
         else:
-            await ctx.send("{}, you do not have any games. Add one using `{p}game add <game_name>` and/or link your Steam profile with `{p}game steamlink <steam_id>`.".format(user.mention, p=ctx.prefix))
+            await ctx.send(f"{user.mention}, you do not have any games. Add one using `{ctx.prefix}game add <game_name>` and/or link your Steam profile with `{ctx.prefix}game steamlink <steam_id>`.")
 
     @game.command()
     async def suggest(self, ctx, choice=None):
@@ -242,9 +243,9 @@ class Game(commands.Cog):
                 poll_id = create_strawpoll("What to play?", suggestions)
 
                 if poll_id:
-                    await ctx.send("Here's your strawpoll link: https://www.strawpoll.me/{}".format(poll_id))
+                    await ctx.send(f"Here's your strawpoll link: https://www.strawpoll.me/{poll_id}")
                 else:
-                    await ctx.send("Phew! You have way too many games to create a poll. You should try `{}game suggest` instead.".format(ctx.prefix))
+                    await ctx.send(f"Phew! You have way too many games to create a poll. You should try `{ctx.prefix}game suggest` instead.")
             else:
                 await ctx.send("You have exactly **zero** games in common, go buy a 4-pack!")
         else:
@@ -259,7 +260,6 @@ class Game(commands.Cog):
         """
 
         await self.config.steamkey.set(key)
-        await ctx.send("Steam key: {}".format("True" if await self.config.steamkey() else "False"))
         await ctx.send("The Steam API key has been successfully added! Delete the previous message for your own safety!")
 
     @game.command()
@@ -283,23 +283,22 @@ class Game(commands.Cog):
             key = await self.config.steamkey()
 
             if key:
-                url = "https://api.steampowered.com/ISteamUser/ResolveVanityURL/v0001/?key={key}&vanityurl={id}&format=json".format(
-                    key=key, id=steam_id)
+                url = f"https://api.steampowered.com/ISteamUser/ResolveVanityURL/v0001/?key={key}&vanityurl={steam_id}&format=json"
                 r = requests.get(url)
                 response = json.loads(r.text).get('response')
 
                 if not response.get('success') == 1:
-                    await ctx.send("{}, there was a problem linking your Steam name. Please try again with your 64-bit Steam ID instead.".format(user.mention))
+                    await ctx.send(f"{user.mention}, there was a problem linking your Steam name. Please try again with your 64-bit Steam ID instead.")
                     return
                 else:
                     steam_id = await self.config.user(user).steam_id.set(response.get("steamid"))
             else:
-                await ctx.send("Sorry, you need a Steam API key to make requests to Steam. Use `{}game steamkey` for more information.".format(ctx.prefix))
+                await ctx.send(f"Sorry, you need a Steam API key to make requests to Steam. Use `{ctx.prefix}game steamkey` for more information.")
                 return
 
         game_list = await self.get_steam_games(user)
         await self.config.user(user).games.set(game_list)
-        await ctx.send("{}'s account has been linked with Steam.".format(user.mention))
+        await ctx.send(f"{user.mention}'s account has been linked with Steam.")
 
     @game.command()
     async def update(self, ctx, user: discord.Member = None):
@@ -319,26 +318,25 @@ class Game(commands.Cog):
         steam_id = await self.config.user(user).steam_id()
 
         if not steam_id:
-            await ctx.send("{}, your Discord ID is not yet connected to a Steam profile. Use `{}game steamlink` to link them.".format(user.mention, ctx.prefix))
+            await ctx.send(f"{user.mention}, your Discord ID is not yet connected to a Steam profile. Use `{ctx.prefix}game steamlink` to link them.")
             return
 
         updated_games = await self.get_steam_games(user)
         if not updated_games:
-            await ctx.send("Sorry, you need a Steam API key to make requests to Steam. Use `{}game steamkey` for more information.".format(ctx.prefix))
+            await ctx.send(f"Sorry, you need a Steam API key to make requests to Steam. Use `{ctx.prefix}game steamkey` for more information.")
             return
 
         current_games = await self.config.user(user).games()
         current_games.extend(updated_games)
         await self.config.user(user).games.set(list(set(current_games)))
-        await ctx.send("{}, your Steam games have been updated!".format(user.mention))
+        await ctx.send(f"{user.mention}, your Steam games have been updated!")
 
     async def get_steam_games(self, user):
         key = await self.config.steamkey()
         steam_id = await self.config.user(user).steam_id()
 
         if key:
-            url = "https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key={key}&steamid={id}&include_appinfo=1&format=json".format(
-                key=key, id=steam_id)
+            url = f"https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key={key}&steamid={steam_id}&include_appinfo=1&format=json"
             r = requests.get(url)
             games = [game.get('name') for game in json.loads(
                 r.text).get('response').get('games')]
