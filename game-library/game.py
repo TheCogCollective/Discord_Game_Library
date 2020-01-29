@@ -1,10 +1,11 @@
+import asyncio
 import json
 import os
 import random
+import requests
 from collections import defaultdict
 
 import discord
-import requests
 from redbot.core.config import Config
 from redbot.core import commands, checks
 from redbot.core.utils.chat_formatting import box, pagify, question, warning
@@ -104,7 +105,12 @@ class Game(commands.Cog):
 
     @game.command()
     async def destroy(self, ctx, user: discord.Member = None):
-        "Delete your library"
+        """
+        Delete your entire game library from this server
+
+        Args:
+            user (Optional) If given, destroy a user's game library, otherwise destroy the message user's library
+        """
 
         if user and not await check_permissions(ctx, {"manage_messages": True}):
             await ctx.send("You don't have the permissions to do this action")
@@ -114,9 +120,12 @@ class Game(commands.Cog):
             user = ctx.author
 
         await ctx.send(warning("Are you sure? (yes/no)"))
-        response = await self.bot.wait_for('message', timeout=15, check=MessagePredicate.yes_or_no(ctx))
 
-        if response:
+        try:
+            response = await self.bot.wait_for('message', timeout=15, check=MessagePredicate.yes_or_no(ctx))
+        except asyncio.exceptions.TimeoutError:
+            await ctx.send("Yeah, that's what I thought.")
+        else:
             response = response.content.strip().lower()
 
             if response in "yes":
@@ -124,8 +133,6 @@ class Game(commands.Cog):
                 await ctx.send("{}, your game library has been nuked".format(user.mention))
             elif response in "no":
                 await ctx.send("Well, that was close!")
-        else:
-            await ctx.send("Yeah, that's what I thought.")
 
     @game.command()
     async def check(self, ctx, game, user: discord.Member = None):
