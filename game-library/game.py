@@ -8,9 +8,9 @@ import requests
 
 import discord
 from redbot.core import commands
-from redbot.core.checks import mod_or_permissions
 from redbot.core.config import Config
 from redbot.core.utils.chat_formatting import box, pagify, warning
+from redbot.core.utils.mod import check_permissions
 from redbot.core.utils.predicates import MessagePredicate
 
 MANAGE_MESSAGES = {"manage_messages": True}
@@ -58,7 +58,7 @@ class Game(commands.Cog):
         game: Name of the game
         """
 
-        if not await self.check_user_permissions(user, **MANAGE_MESSAGES):
+        if user and not await self.can_manage_messages(ctx):
             await ctx.send("You don't have the permissions to do this action")
             return
 
@@ -80,7 +80,7 @@ class Game(commands.Cog):
 
         game: Name of the game
         """
-        if not await self.check_user_permissions(user, **MANAGE_MESSAGES):
+        if user and not await self.can_manage_messages(ctx):
             await ctx.send("You don't have the permissions to do this action")
             return
 
@@ -104,7 +104,7 @@ class Game(commands.Cog):
             user (Optional) If given, destroy a user's game library, otherwise destroy the message user's library
         """
 
-        if not await self.check_user_permissions(user, **MANAGE_MESSAGES):
+        if user and not await self.can_manage_messages(ctx):
             await ctx.send("You don't have the permissions to do this action")
             return
 
@@ -300,7 +300,7 @@ class Game(commands.Cog):
         user: If given, update the user's Steam games, otherwise default to user of the message
         """
 
-        if not await self.check_user_permissions(user, **MANAGE_MESSAGES):
+        if user and not await self.can_manage_messages(ctx):
             await ctx.send("You don't have the permissions to do this action")
             return
 
@@ -366,11 +366,8 @@ class Game(commands.Cog):
                     users.append(user.id)
         return users
 
-    async def check_user_permissions(self, user, **perms):
-        if user and not mod_or_permissions(**perms):
-            return False
-
-        return True
+    async def can_manage_messages(self, ctx):
+        return await check_permissions(ctx, MANAGE_MESSAGES)
 
 
 def create_strawpoll(title, options):
