@@ -2,15 +2,18 @@ import asyncio
 import json
 import os
 import random
-import requests
 from collections import defaultdict
 
+import requests
+
 import discord
+from redbot.core import commands
+from redbot.core.checks import mod_or_permissions
 from redbot.core.config import Config
-from redbot.core import commands, checks
-from redbot.core.utils.chat_formatting import box, pagify, question, warning
-from redbot.core.utils.mod import check_permissions
+from redbot.core.utils.chat_formatting import box, pagify, warning
 from redbot.core.utils.predicates import MessagePredicate
+
+MANAGE_MESSAGES = {"manage_messages": True}
 
 
 class MemberNotInVoiceChannelError(Exception):
@@ -25,14 +28,14 @@ class Game(commands.Cog):
         default_global = {
             "steamkey": ""
         }
-        default_member = {
+        default_user = {
             "games": [],
             "steam_id": "",
             "steam_name": ""
         }
 
         self.config.register_global(**default_global)
-        self.config.register_member(**default_member)
+        self.config.register_user(**default_user)
         self.bot = bot
 
     @commands.group(name="game")
@@ -46,17 +49,6 @@ class Game(commands.Cog):
 
             if suggestions:
                 await ctx.send(f"Let's play some {random.choice(suggestions)}!")
-            else:
-                await ctx.send(f"""
-                You do not have any games, go get some!
-
-                Once you do, you can either add them directly (`add`) or link your Steam profile (`steamlink`) by:
-
-                1. `{ctx.prefix}game add <game>`
-                2. `{ctx.prefix}game steamlink <steam_id>` (or your steam name if you have a custom URL at steamcommunity.com/id/<name>)
-
-                Use `{ctx.prefix}help game` to get a full list of commands that are available to you.
-                """)
 
     @game.command()
     async def add(self, ctx, game, user: discord.Member = None):
@@ -66,17 +58,17 @@ class Game(commands.Cog):
         game: Name of the game
         """
 
-        if user and not await check_permissions(ctx, {"manage_messages": True}):
+        if not await self.check_user_permissions(user, **MANAGE_MESSAGES):
             await ctx.send("You don't have the permissions to do this action")
             return
 
         if not user:
             user = ctx.author
 
-        games = await self.config.member(user).games()
-        if not game in games:
+        games = await self.config.user(user).games()
+        if game not in games:
             games.append(game)
-            await self.config.member(user).games.set(games)
+            await self.config.user(user).games.set(games)
             await ctx.send(f"{user.mention}, {game} was added to your library.")
         else:
             await ctx.send(f"{user.mention}, you already have this game in your library.")
@@ -88,17 +80,17 @@ class Game(commands.Cog):
 
         game: Name of the game
         """
-        if user and not await check_permissions(ctx, {"manage_messages": True}):
+        if not await self.check_user_permissions(user, **MANAGE_MESSAGES):
             await ctx.send("You don't have the permissions to do this action")
             return
 
         if not user:
             user = ctx.author
 
-        games = await self.config.member(user).games()
+        games = await self.config.user(user).games()
         if game in games:
             games.remove(game)
-            await self.config.member(user).games.set(games)
+            await self.config.user(user).games.set(games)
             await ctx.send(f"{user.mention}, {game} was removed from your library.")
         else:
             await ctx.send(f"{user.mention}, you don't have this game in your library.")
@@ -112,7 +104,7 @@ class Game(commands.Cog):
             user (Optional) If given, destroy a user's game library, otherwise destroy the message user's library
         """
 
-        if user and not await check_permissions(ctx, {"manage_messages": True}):
+        if not await self.check_user_permissions(user, **MANAGE_MESSAGES):
             await ctx.send("You don't have the permissions to do this action")
             return
 
@@ -129,7 +121,7 @@ class Game(commands.Cog):
             response = response.content.strip().lower()
 
             if response in "yes":
-                await self.config.member(user).games.set([])
+                await self.config.user(user).games.set([])
                 await ctx.send(f"{user.mention}, your game library has been nuked")
             elif response in "no":
                 await ctx.send("Well, that was close!")
@@ -145,7 +137,7 @@ class Game(commands.Cog):
 
         # Check if a user has the game
         if user:
-            games = await self.config.member(user).games()
+            games = await self.config.user(user).games()
             if not games:
                 await ctx.send(f"{user.mention} does not have a game library yet. Use {ctx.prefix}help game to start adding games!")
                 return
@@ -159,7 +151,7 @@ class Game(commands.Cog):
         users_with_games = []
 
         # Check which users have the game
-        all_users = await self.config.all_members()
+        all_users = await self.config.all_users()
         for discord_id, user_data in all_users.items():
             if game in user_data.get("games"):
                 user = ctx.message.guild.get_member(discord_id)
@@ -185,7 +177,7 @@ class Game(commands.Cog):
         if not user:
             user = author
 
-        game_list = await self.config.member(user).games()
+        game_list = await self.config.user(user).games()
 
         if game_list:
             message = pagify(", ".join(sorted(game_list)), [', '])
@@ -291,13 +283,13 @@ class Game(commands.Cog):
                     await ctx.send(f"{user.mention}, there was a problem linking your Steam name. Please try again with your 64-bit Steam ID instead.")
                     return
                 else:
-                    steam_id = await self.config.member(user).steam_id.set(response.get("steamid"))
+                    steam_id = await self.config.user(user).steam_id.set(response.get("steamid"))
             else:
                 await ctx.send(f"Sorry, you need a Steam API key to make requests to Steam. Use `{ctx.prefix}game steamkey` for more information.")
                 return
 
         game_list = await self.get_steam_games(user)
-        await self.config.member(user).games.set(game_list)
+        await self.config.user(user).games.set(game_list)
         await ctx.send(f"{user.mention}'s account has been linked with Steam.")
 
     @game.command()
@@ -308,14 +300,14 @@ class Game(commands.Cog):
         user: If given, update the user's Steam games, otherwise default to user of the message
         """
 
-        if user and not await check_permissions(ctx, {"manage_messages": True}):
+        if not await self.check_user_permissions(user, **MANAGE_MESSAGES):
             await ctx.send("You don't have the permissions to do this action")
             return
 
         if not user:
             user = ctx.author
 
-        steam_id = await self.config.member(user).steam_id()
+        steam_id = await self.config.user(user).steam_id()
 
         if not steam_id:
             await ctx.send(f"{user.mention}, your Discord ID is not yet connected to a Steam profile. Use `{ctx.prefix}game steamlink` to link them.")
@@ -326,14 +318,14 @@ class Game(commands.Cog):
             await ctx.send(f"Sorry, you need a Steam API key to make requests to Steam. Use `{ctx.prefix}game steamkey` for more information.")
             return
 
-        current_games = await self.config.member(user).games()
+        current_games = await self.config.user(user).games()
         current_games.extend(updated_games)
-        await self.config.member(user).games.set(list(set(current_games)))
+        await self.config.user(user).games.set(list(set(current_games)))
         await ctx.send(f"{user.mention}, your Steam games have been updated!")
 
     async def get_steam_games(self, user):
         key = await self.config.steamkey()
-        steam_id = await self.config.member(user).steam_id()
+        steam_id = await self.config.user(user).steam_id()
 
         if key:
             url = f"https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key={key}&steamid={steam_id}&include_appinfo=1&format=json"
@@ -348,8 +340,8 @@ class Game(commands.Cog):
         if not users:
             return
 
-        all_user_data = await self.config.all_members()
-        users_game_list = [all_user_data.get(user).get("games") for user in users]
+        all_user_data = await self.config.all_users()
+        users_game_list = [all_user_data.get(user, {}).get("games") for user in users]
 
         # Sometimes there are some None...
         users_game_list = list(filter(None.__ne__, users_game_list))
@@ -373,6 +365,12 @@ class Game(commands.Cog):
                 if not user.bot:
                     users.append(user.id)
         return users
+
+    async def check_user_permissions(self, user, **perms):
+        if user and not mod_or_permissions(**perms):
+            return False
+
+        return True
 
 
 def create_strawpoll(title, options):
