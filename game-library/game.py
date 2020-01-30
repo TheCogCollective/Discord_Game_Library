@@ -8,6 +8,7 @@ import requests
 
 import discord
 from redbot.core import commands
+from redbot.core.checks import admin_or_permissions
 from redbot.core.config import Config
 from redbot.core.utils.chat_formatting import box, pagify, warning
 from redbot.core.utils.mod import check_permissions
@@ -53,47 +54,93 @@ class Game(commands.Cog):
     @game.command()
     async def add(self, ctx, game, user: discord.Member = None):
         """
-        Add a game to your game list
+        Add a game to your library, or another user's library (admin permissions required)
 
-        game: Name of the game
+        Args:
+            game: Name of the game to be added
+            user: (Optional) If given, add game to a user's game library, otherwise add to the message user's library
         """
 
-        if user and not await self.can_manage_messages(ctx):
-            await ctx.send("You don't have the permissions to do this action")
-            return
-
-        if not user:
-            user = ctx.author
-
-        games = await self.config.user(user).games()
-        if game not in games:
-            games.append(game)
-            await self.config.user(user).games.set(games)
-            await ctx.send(f"{user.mention}, {game} was added to your library.")
+        if user:
+            await self._add_to(ctx, game, user)
         else:
-            await ctx.send(f"{user.mention}, you already have this game in your library.")
+            await self._add(ctx, game, ctx.author)
+
+    @admin_or_permissions(**MANAGE_MESSAGES)
+    async def _add_to(self, ctx, game, user):
+        await self._add(ctx, game, user)
+
+    async def _add(self, ctx, game, user):
+        games = await self.config.user(user).games()
+        if game in games:
+            await ctx.send(f"{game} already exists in {user.mention}'s library.")
+            return
+        games.append(game)
+        await self.config.user(user).games.set(games)
+        await ctx.send(f"{game} was added to {user.mention}'s library.")
 
     @game.command()
     async def remove(self, ctx, game, user: discord.Member = None):
         """
-        Remove a game from your game list
+        Remove a game to your library, or another user's library (admin permissions required)
 
-        game: Name of the game
+        Args:
+            game: Name of the game to be removed
+            user: (Optional) If given, destroy a user's game library, otherwise destroy the message user's library
         """
-        if user and not await self.can_manage_messages(ctx):
-            await ctx.send("You don't have the permissions to do this action")
-            return
 
-        if not user:
-            user = ctx.author
+        if user:
+            await self._remove_from(ctx, game, user)
+        else:
+            await self._remove(ctx, game, ctx.author)
 
+    @admin_or_permissions(**MANAGE_MESSAGES)
+    async def _remove_from(self, ctx, game, user):
+        await self._remove(ctx, game, user)
+
+    async def _remove(self, ctx, game, user):
         games = await self.config.user(user).games()
         if game in games:
             games.remove(game)
             await self.config.user(user).games.set(games)
-            await ctx.send(f"{user.mention}, {game} was removed from your library.")
+            await ctx.send(f"{game} was removed from {user.mention}'s library.")
         else:
-            await ctx.send(f"{user.mention}, you don't have this game in your library.")
+            await ctx.send(f"{game} is not in {user.mention}'s library.")
+
+    @game.command()
+    async def update(self, ctx, user: discord.Member = None):
+        """
+        Update a user's Steam game library
+
+        Args:
+            user: (Optional) If given, update the user's Steam games, otherwise default to user of the message
+        """
+
+        if user:
+            await self._update_for(ctx, user)
+        else:
+            await self._update(ctx, ctx.author)
+
+    @admin_or_permissions(**MANAGE_MESSAGES)
+    async def _update_for(self, ctx, user):
+        await self._update(ctx, user)
+
+    async def _update(self, ctx, user):
+        steam_id = await self.config.user(user).steam_id()
+
+        if not steam_id:
+            await ctx.send(f"{user.mention}'s Discord profile is not yet connected to a Steam profile. Use `{ctx.prefix}game steamlink` to link them.")
+            return
+
+        updated_games = await self.get_steam_games(user)
+        if not updated_games:
+            await ctx.send(f"Sorry, you need a Steam API key to make requests to Steam. Use `{ctx.prefix}game steamkey` for more information.")
+            return
+
+        current_games = await self.config.user(user).games()
+        current_games.extend(updated_games)
+        await self.config.user(user).games.set(list(set(current_games)))
+        await ctx.send(f"{user.mention}'s Steam games have been updated!")
 
     @game.command()
     async def destroy(self, ctx, user: discord.Member = None):
@@ -101,29 +148,33 @@ class Game(commands.Cog):
         Delete your entire game library from this server
 
         Args:
-            user (Optional) If given, destroy a user's game library, otherwise destroy the message user's library
+            user: (Optional) If given, destroy a user's game library, otherwise destroy the message user's library
         """
 
-        if user and not await self.can_manage_messages(ctx):
-            await ctx.send("You don't have the permissions to do this action")
-            return
+        if user:
+            await self._destroy_for(ctx, user)
+        else:
+            await self._destroy(ctx, ctx.author)
 
-        if not user:
-            user = ctx.author
+    @admin_or_permissions(**MANAGE_MESSAGES)
+    async def _destroy_for(self, ctx, user):
+        await self._destroy(ctx, user)
 
+    async def _destroy(self, ctx, user):
         await ctx.send(warning("Are you sure? (yes/no)"))
 
         try:
-            response = await self.bot.wait_for('message', timeout=15, check=MessagePredicate.yes_or_no(ctx))
+            predicate = MessagePredicate.yes_or_no(ctx)
+            await self.bot.wait_for('message', timeout=15, check=predicate)
         except asyncio.exceptions.TimeoutError:
             await ctx.send("Yeah, that's what I thought.")
         else:
-            response = response.content.strip().lower()
-
-            if response in "yes":
-                await self.config.user(user).games.set([])
+            if predicate.result is True:
+                games = await self.config.user(user).games()
+                games.clear()
+                await self.config.user(user).games.set(games)
                 await ctx.send(f"{user.mention}, your game library has been nuked")
-            elif response in "no":
+            else:
                 await ctx.send("Well, that was close!")
 
     @game.command()
@@ -135,19 +186,23 @@ class Game(commands.Cog):
         user: (Optional) If given, check the user's library, otherwise check all user libraries
         """
 
-        # Check if a user has the game
         if user:
-            games = await self.config.user(user).games()
-            if not games:
-                await ctx.send(f"{user.mention} does not have a game library yet. Use {ctx.prefix}help game to start adding games!")
-                return
+            await self._check(ctx, game, user)
+        else:
+            await self._check_all(ctx, game, ctx.author)
 
-            if game in games:
-                await ctx.send(f"Aye {user.mention}, you have {game} in your library.")
-            else:
-                await ctx.send(f"Nay {user.mention}, you do not have that game in your library.")
+    async def _check(self, ctx, game, user):
+        games = await self.config.user(user).games()
+        if not games:
+            await ctx.send(f"{user.mention} does not have a game library yet. Use `{ctx.prefix}help game` to start adding games!")
             return
 
+        if game in games:
+            await ctx.send(f"Aye {user.mention}, you have {game} in your library.")
+        else:
+            await ctx.send(f"Nay {user.mention}, you do not have that game in your library.")
+
+    async def _check_all(self, ctx, game, user):
         users_with_games = []
 
         # Check which users have the game
@@ -161,8 +216,8 @@ class Game(commands.Cog):
         if not users_with_games:
             await ctx.send(f"None of you have {game}!")
         else:
-            message = box('\n'.join(users_with_games))
-            await ctx.send(f"The following of you have {game}: {message}")
+            users = box('\n'.join(users_with_games))
+            await ctx.send(f"The following of you have {game}: {users}")
 
     @game.command()
     async def list(self, ctx, user: discord.Member = None):
@@ -172,20 +227,24 @@ class Game(commands.Cog):
         user: (Optional) If given, list a user's game library, otherwise list the message user's library
         """
 
-        author = ctx.author
+        if user:
+            await self._list_for(ctx, user)
+        else:
+            await self._list(ctx, ctx.author)
 
-        if not user:
-            user = author
+    async def _list_for(self, ctx, user):
+        await self._list(ctx, user)
 
+    async def _list(self, ctx, user):
         game_list = await self.config.user(user).games()
-
         if game_list:
-            message = pagify(", ".join(sorted(game_list)), [', '])
+            author = ctx.author
+            messages = pagify(", ".join(sorted(game_list)), [', '])
             await ctx.send(f"Please check your DM for the full list of games, {author.mention}.")
             await author.send(f"{user.mention}'s games:")
 
-            for page in message:
-                await author.send((box(page)))
+            for message in messages:
+                await author.send((box(message)))
         else:
             await ctx.send(f"{user.mention}, you do not have any games. Add one using `{ctx.prefix}game add <game_name>` and/or link your Steam profile with `{ctx.prefix}game steamlink <steam_id>`.")
 
@@ -292,37 +351,6 @@ class Game(commands.Cog):
         await self.config.user(user).games.set(game_list)
         await ctx.send(f"{user.mention}'s account has been linked with Steam.")
 
-    @game.command()
-    async def update(self, ctx, user: discord.Member = None):
-        """
-        Update a user's Steam game library
-
-        user: If given, update the user's Steam games, otherwise default to user of the message
-        """
-
-        if user and not await self.can_manage_messages(ctx):
-            await ctx.send("You don't have the permissions to do this action")
-            return
-
-        if not user:
-            user = ctx.author
-
-        steam_id = await self.config.user(user).steam_id()
-
-        if not steam_id:
-            await ctx.send(f"{user.mention}, your Discord ID is not yet connected to a Steam profile. Use `{ctx.prefix}game steamlink` to link them.")
-            return
-
-        updated_games = await self.get_steam_games(user)
-        if not updated_games:
-            await ctx.send(f"Sorry, you need a Steam API key to make requests to Steam. Use `{ctx.prefix}game steamkey` for more information.")
-            return
-
-        current_games = await self.config.user(user).games()
-        current_games.extend(updated_games)
-        await self.config.user(user).games.set(list(set(current_games)))
-        await ctx.send(f"{user.mention}, your Steam games have been updated!")
-
     async def get_steam_games(self, user):
         key = await self.config.steamkey()
         steam_id = await self.config.user(user).steam_id()
@@ -365,9 +393,6 @@ class Game(commands.Cog):
                 if not user.bot:
                     users.append(user.id)
         return users
-
-    async def can_manage_messages(self, ctx):
-        return await check_permissions(ctx, MANAGE_MESSAGES)
 
 
 def create_strawpoll(title, options):
