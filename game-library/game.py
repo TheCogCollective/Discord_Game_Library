@@ -15,6 +15,10 @@ from redbot.core.utils.mod import check_permissions
 from redbot.core.utils.predicates import MessagePredicate
 
 MANAGE_MESSAGES = {"manage_messages": True}
+STRAWPOLL_GET_ENDPOINT = "https://www.strawpoll.me/{poll_id}"
+STRAWPOLL_CREATE_ENDPOINT = "https://www.strawpoll.me/api/v2/polls"
+STEAM_RESOLVE_NAME_ENDPOINT = "https://api.steampowered.com/ISteamUser/ResolveVanityURL/v0001/?key={key}&vanityurl={steam_id}&format=json"
+STEAM_GET_USER_GAMES_ENDPOINT = "https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key={key}&steamid={steam_id}&include_appinfo=1&format=json"
 
 
 class MemberNotInVoiceChannelError(Exception):
@@ -237,16 +241,16 @@ class Game(commands.Cog):
 
     async def _list(self, ctx, user):
         game_list = await self.config.user(user).games()
-        if game_list:
-            author = ctx.author
-            messages = pagify(", ".join(sorted(game_list)), [', '])
-            await ctx.send(f"Please check your DM for the full list of games, {author.mention}.")
-            await author.send(f"{user.mention}'s games:")
+        if not game_list:
+            await ctx.send(f"{user.mention} does not have any games. Add one using either `{ctx.prefix}game add <game_name>` or link with a Steam profile using `{ctx.prefix}game steamlink <steam_id>`.")
+            return
 
-            for message in messages:
-                await author.send((box(message)))
-        else:
-            await ctx.send(f"{user.mention}, you do not have any games. Add one using `{ctx.prefix}game add <game_name>` and/or link your Steam profile with `{ctx.prefix}game steamlink <steam_id>`.")
+        messages = pagify(", ".join(sorted(game_list)), [', '])
+        await ctx.send(f"Please check your DM for the full list of games, {ctx.author.mention}.")
+        await ctx.author.send(f"{user.mention}'s games:")
+
+        for message in messages:
+            await ctx.author.send((box(message)))
 
     @game.command()
     async def suggest(self, ctx, choice=None):
@@ -256,27 +260,31 @@ class Game(commands.Cog):
         choice: (Optional) Either 'online' (for all online users; excluding users with 'dnd' status) or 'voice' (for all users in a voice channel))
         """
 
+        if choice and choice.lower() not in ("online", "voice"):
+            await ctx.send("Please enter a valid filter -> either use `online` (default) for all online users or `voice` for all users in a voice channel")
+            return
+
         if choice is None or choice.lower() in ("online", "voice"):
             try:
                 users = await self.get_users(ctx, choice)
             except MemberNotInVoiceChannelError:
                 await ctx.send("You need to be in a voice channel for this to work")
                 return
-            if len(users) <= 1:
-                await ctx.send("Yeah, you need more than one person online for this to work")
-                return
+            else:
+                if len(users) <= 1:
+                    await ctx.send("You need more than one person online for this to work")
+                    return
+
             suggestions = await self.get_suggestions(users)
 
-            if suggestions:
-                await ctx.send("You can play these games: \n")
-                message = pagify("\n".join(suggestions), ['\n'])
-
-                for page in message:
-                    await ctx.send(box(page))
-            else:
+            if not suggestions:
                 await ctx.send("You have exactly **zero** games in common, go buy a 4-pack!")
-        else:
-            await ctx.send("Please enter a valid filter -> either use `online` (default) for all online users or `voice` for all users in a voice channel")
+                return
+
+            await ctx.send("You can play these games: \n")
+            messages = pagify("\n".join(suggestions), ['\n'])
+            for message in messages:
+                await ctx.send(box(message))
 
     @game.command()
     async def poll(self, ctx, choice=None):
@@ -286,28 +294,32 @@ class Game(commands.Cog):
         choice: (Optional) Either 'online' (for all online users; excluding users with 'dnd' status) or 'voice' (for all users in a voice channel))
         """
 
+        if choice and choice.lower() not in ("online", "voice"):
+            await ctx.send("Please enter a valid filter -> either use `online` (default) for all online users or `voice` for all users in a voice channel")
+            return
+
         if choice is None or choice.lower() in ("online", "voice"):
             users = await self.get_users(ctx, choice)
             suggestions = await self.get_suggestions(users)
 
-            if suggestions:
-                poll_id = create_strawpoll("What to play?", suggestions)
-
-                if poll_id:
-                    await ctx.send(f"Here's your strawpoll link: https://www.strawpoll.me/{poll_id}")
-                else:
-                    await ctx.send(f"Phew! You have way too many games to create a poll. You should try `{ctx.prefix}game suggest` instead.")
-            else:
+            if not suggestions:
                 await ctx.send("You have exactly **zero** games in common, go buy a 4-pack!")
-        else:
-            await ctx.send("Please enter a valid filter -> either use `online` (default) for all online users or `voice` for all users in a voice channel")
+                return
+
+            poll_id = create_strawpoll("What to play?", suggestions)
+
+            if poll_id:
+                await ctx.send(f"Here's your strawpoll link: {STRAWPOLL_ENDPOINT.format(poll_id=poll_id)}")
+            else:
+                await ctx.send(f"""Phew! You have way too many games to create a poll. You should try `{ctx.prefix}game suggest` instead to get the full list of common games.""")
 
     @game.command()
     async def steamkey(self, ctx, key):
         """
         (One-time setup) Set the Steam API key to use `steamlink` and `update` commands
 
-        key: An API key generated at https://steamcommunity.com/dev/apikey (login with your Steam profile and enter any domain to create one)
+        Args:
+            key: An API key generated at https://steamcommunity.com/dev/apikey (login with your Steam profile and enter any domain to create one)
         """
 
         await self.config.steamkey.set(key)
@@ -318,8 +330,9 @@ class Game(commands.Cog):
         """
         Link a Steam profile with a Discord ID
 
-        steam_id: Steam Name (found in your Custom URL -> steamcommunity.com/id/<name>) or Steam ID (64-bit ID -> steamcommunity.com/profiles/<id>)
-        user: (Optional) If given, link library to user, otherwise default to user of the message
+        Args:
+            steam_id: Steam Name (found in your Custom URL -> steamcommunity.com/id/<name>) or Steam ID (64-bit ID -> steamcommunity.com/profiles/<id>)
+            user: (Optional) If given, link library to user, otherwise default to user of the message
         """
 
         if not user:
@@ -333,36 +346,40 @@ class Game(commands.Cog):
         except ValueError:
             key = await self.config.steamkey()
 
-            if key:
-                url = f"https://api.steampowered.com/ISteamUser/ResolveVanityURL/v0001/?key={key}&vanityurl={steam_id}&format=json"
-                r = requests.get(url)
-                response = json.loads(r.text).get('response')
-
-                if not response.get('success') == 1:
-                    await ctx.send(f"{user.mention}, there was a problem linking your Steam name. Please try again with your 64-bit Steam ID instead.")
-                    return
-                else:
-                    steam_id = await self.config.user(user).steam_id.set(response.get("steamid"))
-            else:
+            if not key:
                 await ctx.send(f"Sorry, you need a Steam API key to make requests to Steam. Use `{ctx.prefix}game steamkey` for more information.")
                 return
 
-        game_list = await self.get_steam_games(user)
-        await self.config.user(user).games.set(game_list)
-        await ctx.send(f"{user.mention}'s account has been linked with Steam.")
+            url = STEAM_RESOLVE_NAME_ENDPOINT.format(key=key, steam_id=steam_id)
+            resp = requests.get(url)
+            response = json.loads(resp.text).get('response')
+
+            if not response.get('success') == 1:
+                await ctx.send(f"There was a problem syncing {user.mention}'s account with Steam name '{steam_id}'. Please try again with the 64-bit Steam ID instead.")
+                return
+
+            await self.config.user(user).steam_id.set(response.get("steamid"))
+
+        steam_game_list = await self.get_steam_games(user)
+        if steam_game_list:
+            game_list = await self.config.user(user).games()
+            game_list.extend(steam_game_list)
+            await self.config.user(user).games.set(game_list)
+
+        await ctx.send(f"{user.mention}'s account was synced with Steam.")
 
     async def get_steam_games(self, user):
         key = await self.config.steamkey()
-        steam_id = await self.config.user(user).steam_id()
 
-        if key:
-            url = f"https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key={key}&steamid={steam_id}&include_appinfo=1&format=json"
-            r = requests.get(url)
-            games = [game.get('name') for game in json.loads(
-                r.text).get('response').get('games')]
-            return games
-        else:
+        if not key:
             return False
+
+        steam_id = await self.config.user(user).steam_id()
+        url = STEAM_GET_USER_GAMES_ENDPOINT.format(key=key, steam_id=steam_id)
+        resp = requests.get(url)
+        response = json.loads(resp.text).get('response')
+        games = [game.get('name') for game in response.get('games')]
+        return games
 
     async def get_suggestions(self, users):
         if not users:
@@ -371,9 +388,6 @@ class Game(commands.Cog):
         all_user_data = await self.config.all_users()
         users_game_list = [all_user_data.get(user, {}).get("games") for user in users]
 
-        # Sometimes there are some None...
-        users_game_list = list(filter(None.__ne__, users_game_list))
-
         if users_game_list:
             suggestions = set(users_game_list[0]).intersection(
                 *users_game_list[1:])
@@ -381,6 +395,7 @@ class Game(commands.Cog):
 
     async def get_users(self, ctx, choice=None):
         users = []
+
         if choice is None or choice.lower == "online":
             for user in ctx.message.guild.members:
                 if user.status.name in ("idle", "online") and not user.bot:
@@ -389,9 +404,11 @@ class Game(commands.Cog):
             current_channel = ctx.author.voice
             if not current_channel:
                 raise MemberNotInVoiceChannelError()
+
             for user in current_channel.channel.members:
                 if not user.bot:
                     users.append(user.id)
+
         return users
 
 
@@ -403,9 +420,9 @@ def create_strawpoll(title, options):
         "title": title,
         "options": options
     }
-    resp = requests.post('https://www.strawpoll.me/api/v2/polls',
-                         headers={'content-type': 'application/json'}, json=data)
-    try:
-        return json.loads(resp.text)['id']
-    except:
+
+    resp = requests.post(STRAWPOLL_CREATE_ENDPOINT, headers={'content-type': 'application/json'}, json=data)
+    if not resp.ok:
         return False
+
+    return json.loads(resp.text).get('id')
