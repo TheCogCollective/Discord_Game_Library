@@ -135,7 +135,7 @@ class Game(commands.Cog):
         steam_id = await self.config.user(user).steam_id()
 
         if not steam_id:
-            await ctx.send(f"{user.mention}'s Discord profile is not yet connected to a Steam profile. Use `{ctx.prefix}game steamlink` to link them.")
+            await ctx.send(f"{user.mention}'s Discord profile is not yet connected to a Steam profile. Use `{ctx.prefix}game steamsync` to sync them.")
             return
 
         updated_games = await self.get_steam_games(user)
@@ -243,7 +243,7 @@ class Game(commands.Cog):
     async def _list(self, ctx: commands.Context, user: discord.Member) -> None:
         game_list = await self.config.user(user).games()
         if not game_list:
-            await ctx.send(f"{user.mention} does not have any games. Add one using either `{ctx.prefix}game add <game_name>` or link with a Steam profile using `{ctx.prefix}game steamlink <steam_id>`.")
+            await ctx.send(f"{user.mention} does not have any games. Add one using either `{ctx.prefix}game add <game_name>` or sync with a Steam profile using `{ctx.prefix}game steamsync <steam_id>`.")
             return
 
         messages = pagify(", ".join(sorted(game_list)), [', '])
@@ -313,7 +313,7 @@ class Game(commands.Cog):
     @game.command()
     async def steamkey(self, ctx: commands.Context, key: str) -> None:
         """
-        (One-time setup) Set the Steam API key to use `steamlink` and `update` commands
+        (One-time setup) Set the Steam API key to use `steamsync` and `update` commands
 
         key: An API key generated at https://steamcommunity.com/dev/apikey (login with your Steam profile and enter any domain to create one)
         """
@@ -323,12 +323,12 @@ class Game(commands.Cog):
         await ctx.send("The Steam API key has been successfully added! Delete the previous message for your own safety!")
 
     @game.command()
-    async def steamlink(self, ctx: commands.Context, steam_id: str, user: discord.Member = None) -> None:
+    async def steamsync(self, ctx: commands.Context, steam_id: str, user: discord.Member = None) -> None:
         """
-        Link a Steam profile with a Discord ID
+        Sync a Steam profile's games with a Discord ID
 
         steam_id: Steam Name (found in your Custom URL -> steamcommunity.com/id/<name>) or Steam ID (64-bit ID -> steamcommunity.com/profiles/<id>)
-        user: If given, link library to user, otherwise default to user of the message
+        user: If given, sync library to user, otherwise default to user of the message
         """
 
         await ctx.trigger_typing()
@@ -336,12 +336,11 @@ class Game(commands.Cog):
         if not user:
             user = ctx.author
 
-        game_list = []
-
-        # Either use given 64-bit Steam ID, or convert given name to a 64-bit Steam ID
         try:
+            # Either use the given 64-bit Steam ID to sync with Steam...
             int(steam_id)
         except ValueError:
+            # ...or convert given name to a 64-bit Steam ID
             key = await self.config.steamkey()
 
             if not key:
