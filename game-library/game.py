@@ -393,7 +393,7 @@ class Game(commands.Cog):
     async def get_users(self, ctx: commands.Context, choice: str = None) -> List[str]:
         users = []
 
-        if choice is None or choice.lower == "online":
+        if choice is None or choice.lower() == "online":
             for user in ctx.message.guild.members:
                 if user.status.name in ("idle", "online") and not user.bot:
                     users.append(user.id)
