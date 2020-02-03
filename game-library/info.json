@@ -1,0 +1,5 @@
+{
+    "author": ["vjFaLk", "Alchez"],
+    "description": "A cog that helps you find common games between people in a channel",
+    "requirements": ["requests"]
+}
