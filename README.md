@@ -9,10 +9,10 @@ All the following commands need to be prefixed with '[p]game'. For example, if y
     !game add (game_name)
 
 ### Steam:
-* `steamkey` - Sets the Steam API key for the server (one-time setup; required to use the `steamlink` and `update` commands).
+* `steamkey` - Sets the Steam API key for the server (one-time setup; required to use the `steamsync` and `update` commands).
   * Visit the [Steam Web API Key](https://steamcommunity.com/dev/apikey) page, login with your Steam profile and fill out the short form to generate one - you can use any domain to do so.
-* `steamlink` - Links a Steam library to a Discord ID
-* `update` - Updates a user's game library with their linked Steam games (for new games and accidental deletions!).
+* `steamsync` - Syncs a Discord user with a Steam ID and game library
+* `update` - Updates a user's game library with games from their synced Steam ID (for new games and accidental deletions!).
 
 ### Non-Steam:
 * `add` - Adds a game to a user's library - mostly useful for manually adding non-Steam games.
