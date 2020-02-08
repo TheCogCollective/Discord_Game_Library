@@ -43,8 +43,7 @@ class Game(commands.Cog):
         }
         default_user = {
             "games": [],
-            "steam_id": "",
-            "steam_name": ""
+            "steam_id": ""
         }
 
         self.config.register_global(**default_global)
@@ -338,7 +337,7 @@ class Game(commands.Cog):
 
         try:
             # Either use the given 64-bit Steam ID to sync with Steam...
-            int(steam_id)
+            steam64_id = int(steam_id)
         except ValueError:
             # ...or convert given name to a 64-bit Steam ID
             key = await self.config.steamkey()
@@ -352,10 +351,12 @@ class Game(commands.Cog):
             response = json.loads(resp.text).get('response')
 
             if not response.get('success') == 1:
-                await ctx.send(f"There was a problem syncing {user.mention}'s account with Steam name '{steam_id}'. Please try again with the 64-bit Steam ID instead.")
+                await ctx.send(f"There was a problem syncing {user.mention}'s account with Steam ID '{steam_id}'. Please try again with the 64-bit Steam ID instead.")
                 return
 
-            await self.config.user(user).steam_id.set(response.get("steamid"))
+            steam64_id = response.get("steamid")
+
+        await self.config.user(user).steam_id.set(steam64_id)
 
         steam_game_list = await self.get_steam_games(user)
         if steam_game_list:
@@ -383,11 +384,10 @@ class Game(commands.Cog):
             users = await self.get_users(ctx, choice)
 
         all_user_data = await self.config.all_users()
-        users_game_list = [all_user_data.get(user, {}).get("games") for user in users]
+        users_game_list = [all_user_data.get(user, {}).get("games", []) for user in users]
 
         if users_game_list:
-            suggestions = set(users_game_list[0]).intersection(
-                *users_game_list[1:])
+            suggestions = set(users_game_list[0]).intersection(*users_game_list[1:])
             return sorted(list(suggestions))
 
     async def get_users(self, ctx: commands.Context, choice: str = None) -> List[str]:
