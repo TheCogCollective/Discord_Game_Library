@@ -131,7 +131,7 @@ class Game(commands.Cog):
             await ctx.send(f"{user.mention}'s Discord profile is not yet connected to a Steam profile. Use `{ctx.prefix}game steamsync` to sync them.")
             return
 
-        updated_games = await self.get_steam_games(user)
+        updated_games = await self.get_steam_games(user, ctx)
         if not updated_games:
             return
 
@@ -305,7 +305,7 @@ class Game(commands.Cog):
             poll_id = create_strawpoll("What to play?", suggestions)
 
             if poll_id:
-                await ctx.send(f"Here's your strawpoll link: {STRAWPOLL_ENDPOINT.format(poll_id=poll_id)}")
+                await ctx.send(f"Here's your strawpoll link: {STRAWPOLL_GET_ENDPOINT.format(poll_id=poll_id)}")
             else:
                 await ctx.send(f"""Phew! You have way too many games to create a poll. You should try `{ctx.prefix}game suggest` instead to get the full list of common games.""")
 
@@ -341,7 +341,11 @@ class Game(commands.Cog):
             steam_id_64 = steam_user.as_64
         else:
             # ...or convert given name to a 64-bit Steam ID
-            steam_client = await self.get_steam_client()
+            steam_client = await self.get_steam_client(ctx)
+
+            if not steam_client:
+                return
+
             steam_name = steam_client.ISteamUser.ResolveVanityURL(vanityurl=steam_id)
 
             if steam_name.get("response").get("success") != 1:
@@ -352,7 +356,7 @@ class Game(commands.Cog):
 
         await self.config.user(user).steam_id.set(steam_id_64)
 
-        steam_game_list = await self.get_steam_games(user)
+        steam_game_list = await self.get_steam_games(user, ctx)
         if steam_game_list:
             game_list = await self.config.user(user).games()
             game_list.extend(steam_game_list)
@@ -361,7 +365,7 @@ class Game(commands.Cog):
 
         await ctx.send(f"{user.mention}'s account was synced with Steam.")
 
-    async def get_steam_client(self):
+    async def get_steam_client(self, ctx: commands.Context) -> WebAPI:
         key = await self.config.steamkey()
 
         if not key:
@@ -376,9 +380,9 @@ class Game(commands.Cog):
 
         return steam_client
 
-    async def get_steam_games(self, user: discord.Member) -> List[str]:
+    async def get_steam_games(self, ctx: commands.Context, user: discord.Member) -> List[str]:
         steam_id = await self.config.user(user).steam_id()
-        steam_client = await self.get_steam_client()
+        steam_client = await self.get_steam_client(ctx)
 
         if not steam_client:
             return
