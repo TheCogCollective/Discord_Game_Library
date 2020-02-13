@@ -5,10 +5,9 @@ import random
 from collections import defaultdict
 from typing import List
 
-import requests
-import steam
-from steam.steamid import SteamID
-from steam.webapi import WebAPI
+import aiohttp
+from steam import SteamID
+from steam import WebAPI
 
 import discord
 from redbot.core import commands
@@ -43,6 +42,10 @@ class Game(commands.Cog):
         self.config.register_global(**default_global)
         self.config.register_user(**default_user)
         self.bot = bot
+        self.session = aiohttp.ClientSession()
+
+    def cog_unload(self):
+        self.bot.loop.create_task(self.session.close())
 
     @commands.group(name="game")
     async def game(self, ctx: commands.Context) -> None:
@@ -115,6 +118,8 @@ class Game(commands.Cog):
         user: If given, update the user's Steam games, otherwise default to user of the message
         """
 
+        await ctx.trigger_typing()
+
         if user:
             await self._update_for(ctx, user)
         else:
@@ -131,7 +136,7 @@ class Game(commands.Cog):
             await ctx.send(f"{user.mention}'s Discord profile is not yet connected to a Steam profile. Use `{ctx.prefix}game steamsync` to sync them.")
             return
 
-        updated_games = await self.get_steam_games(user, ctx)
+        updated_games = await self.get_steam_games(ctx, user)
         if not updated_games:
             return
 
@@ -302,12 +307,9 @@ class Game(commands.Cog):
                 await ctx.send("You have exactly **zero** games in common, go buy a 4-pack!")
                 return
 
-            poll_id = create_strawpoll("What to play?", suggestions)
-
+            poll_id = await self.create_strawpoll(ctx, "What to play?", suggestions)
             if poll_id:
                 await ctx.send(f"Here's your strawpoll link: {STRAWPOLL_GET_ENDPOINT.format(poll_id=poll_id)}")
-            else:
-                await ctx.send(f"""Phew! You have way too many games to create a poll. You should try `{ctx.prefix}game suggest` instead to get the full list of common games.""")
 
     @game.command()
     async def steamkey(self, ctx: commands.Context, key: str) -> None:
@@ -319,7 +321,7 @@ class Game(commands.Cog):
 
         await ctx.trigger_typing()
         await self.config.steamkey.set(key)
-        await ctx.send("The Steam API key has been successfully added! Delete the previous message for your own safety!")
+        await ctx.send("The Steam API key has been successfully added. Delete the previous message for your own safety!")
 
     @game.command()
     async def steamsync(self, ctx: commands.Context, steam_id: str, user: discord.Member = None) -> None:
@@ -356,7 +358,7 @@ class Game(commands.Cog):
 
         await self.config.user(user).steam_id.set(steam_id_64)
 
-        steam_game_list = await self.get_steam_games(user, ctx)
+        steam_game_list = await self.get_steam_games(ctx, user)
         if steam_game_list:
             game_list = await self.config.user(user).games()
             game_list.extend(steam_game_list)
@@ -374,7 +376,7 @@ class Game(commands.Cog):
 
         try:
             steam_client = WebAPI(key=key)
-        except requests.exceptions.HTTPError:
+        except OSError:
             await ctx.send(f"There was an error connecting to Steam. Either the provided Steam key is invalid, or try again later.")
             return False
 
@@ -425,18 +427,23 @@ class Game(commands.Cog):
 
         return users
 
+    async def create_strawpoll(self, ctx: commands.Context, title: str, options: List[str]) -> str:
+        data = {
+            "captcha": "false",
+            "dupcheck": "normal",
+            "multi": "true",
+            "title": title,
+            "options": options
+        }
 
-def create_strawpoll(title, options):
-    data = {
-        "captcha": "false",
-        "dupcheck": "normal",
-        "multi": "true",
-        "title": title,
-        "options": options
-    }
+        async with self.session.post(STRAWPOLL_CREATE_ENDPOINT, json=data) as response:
+            resp = await response.json()
 
-    resp = requests.post(STRAWPOLL_CREATE_ENDPOINT, headers={'content-type': 'application/json'}, json=data)
-    if not resp.ok:
-        return False
+        if resp.get("errorCode") == 40:
+            await ctx.send(f"""Phew! You have way too many games to create a poll. You should try `{ctx.prefix}game suggest` instead to get the full list of common games.""")
+            return ''
+        elif resp.get("errorCode") == 99:
+            await ctx.send("Something went wrong while trying to create the poll. Please report the issue to the cog owners.")
+            return ''
 
-    return json.loads(resp.text).get('id')
+        return resp.get('id')
