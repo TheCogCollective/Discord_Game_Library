@@ -1,5 +1,30 @@
 {
-    "author": ["vjFaLk", "Alchez"],
+    "author": [
+        "vjFaLk",
+        "Alchez"
+    ],
+    "min_bot_version": [
+        3,
+        0,
+        0
+    ],
+    "min_python_version": [
+        3,
+        8,
+        0
+    ],
     "description": "A cog that helps you find common games between people in a channel",
-    "requirements": ["aiohttp", "steam"]
+    "install_msg": "Thank you for installing game-library! Get started with `[p]game` to see all the available options.",
+    "short": "Find a common game to play",
+    "requirements": [
+        "aiohttp",
+        "steam"
+    ],
+    "tags": [
+        "game",
+        "library",
+        "steam",
+        "common",
+        "poll"
+    ]
 }
