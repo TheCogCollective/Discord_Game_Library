@@ -3,7 +3,7 @@ import json
 import os
 import random
 from collections import defaultdict
-from typing import List
+from typing import List, Optional, Sequence, Union
 
 import aiohttp
 from steam import SteamID
@@ -27,6 +27,8 @@ class InvalidChannelFilterError(Exception): pass
 
 
 class Game(commands.Cog):
+    """The class for creating and interacting with users' game libraries"""
+
     def __init__(self, bot):
         self.config = Config.get_conf(
             self, identifier=28784542245, force_registration=True)
@@ -57,7 +59,7 @@ class Game(commands.Cog):
                 await ctx.send(f"Let's play some {random.choice(suggestions)}!")
 
     @game.command()
-    async def add(self, ctx: commands.Context, game: str, user: discord.Member = None) -> None:
+    async def add(self, ctx: commands.Context, game: str, user: Optional[discord.Member] = None) -> None:
         """
         Add a game to your library, or another user's library (admin permissions required)
 
@@ -77,14 +79,14 @@ class Game(commands.Cog):
     async def _add(self, ctx: commands.Context, game: str, user: discord.Member) -> None:
         games = await self.config.user(user).games()
         if game in games:
-            await ctx.send(f"{game} already exists in {user.mention}'s library.")
+            await ctx.send(f"{game} already exists in {user.display_name}'s library.")
             return
         games.append(game)
         await self.config.user(user).games.set(games)
         await ctx.send(f"{game} was added to {user.mention}'s library.")
 
     @game.command()
-    async def remove(self, ctx: commands.Context, game: str, user: discord.Member = None) -> None:
+    async def remove(self, ctx: commands.Context, game: str, user: Optional[discord.Member] = None) -> None:
         """
         Remove a game to your library, or another user's library (admin permissions required)
 
@@ -108,10 +110,10 @@ class Game(commands.Cog):
             await self.config.user(user).games.set(games)
             await ctx.send(f"{game} was removed from {user.mention}'s library.")
         else:
-            await ctx.send(f"{game} is not in {user.mention}'s library.")
+            await ctx.send(f"{game} is not in {user.display_name}'s library.")
 
     @game.command()
-    async def update(self, ctx: commands.Context, user: discord.Member = None) -> None:
+    async def update(self, ctx: commands.Context, user: Optional[discord.Member] = None) -> None:
         """
         Update a user's Steam game library
 
@@ -146,7 +148,7 @@ class Game(commands.Cog):
         await ctx.send(f"{user.mention}'s Steam games have been updated!")
 
     @game.command()
-    async def destroy(self, ctx: commands.Context, user: discord.Member = None) -> None:
+    async def destroy(self, ctx: commands.Context, user: Optional[discord.Member] = None) -> None:
         """
         Delete your entire game library from this server
 
@@ -180,7 +182,7 @@ class Game(commands.Cog):
                 await ctx.send("Well, that was close!")
 
     @game.command()
-    async def check(self, ctx: commands.Context, game: str, user: discord.Member = None) -> None:
+    async def check(self, ctx: commands.Context, game: str, user: Optional[discord.Member] = None) -> None:
         """
         Check if a game exists in a user's library (or all users' libraries)
 
@@ -196,13 +198,13 @@ class Game(commands.Cog):
     async def _check(self, ctx: commands.Context, game: str, user: discord.Member) -> None:
         games = await self.config.user(user).games()
         if not games:
-            await ctx.send(f"{user.mention} does not have a game library yet. Use `{ctx.prefix}help game` to start adding games!")
+            await ctx.send(f"{user.display_name} does not have a game library yet. Use `{ctx.prefix}help game` to start adding games!")
             return
 
         if game in games:
-            await ctx.send(f"Aye {user.mention}, you have {game} in your library.")
+            await ctx.send(f"Aye, {user.display_name} has {game}.")
         else:
-            await ctx.send(f"Nay {user.mention}, you do not have that game in your library.")
+            await ctx.send(f"Nay, {user.display_name} does not have {game}.")
 
     async def _check_all(self, ctx: commands.Context, game: str, user: discord.Member) -> None:
         users_with_games = []
@@ -213,7 +215,7 @@ class Game(commands.Cog):
             if game in user_data.get("games"):
                 user = ctx.message.guild.get_member(discord_id)
                 if user:
-                    users_with_games.append(user.nick or user.name)
+                    users_with_games.append(user.display_name)
 
         if not users_with_games:
             await ctx.send(f"None of you have {game}!")
@@ -222,7 +224,7 @@ class Game(commands.Cog):
             await ctx.send(f"The following of you have {game}: {users}")
 
     @game.command()
-    async def list(self, ctx: commands.Context, user: discord.Member = None) -> None:
+    async def list(self, ctx: commands.Context, user: Optional[discord.Member] = None) -> None:
         """
         Print out a user's game list (sends as a DM)
 
@@ -240,18 +242,18 @@ class Game(commands.Cog):
     async def _list(self, ctx: commands.Context, user: discord.Member) -> None:
         game_list = await self.config.user(user).games()
         if not game_list:
-            await ctx.send(f"{user.mention} does not have any games. Add one using either `{ctx.prefix}game add <game_name>` or sync with a Steam profile using `{ctx.prefix}game steamsync <steam_id>`.")
+            await ctx.send(f"{user.display_name} does not have any games. Start adding them using `{ctx.prefix}game add` or sync with a Steam profile using `{ctx.prefix}game steamsync`.")
             return
 
         messages = pagify(", ".join(sorted(game_list)), [', '])
         await ctx.send(f"Please check your DM for the full list of games, {ctx.author.mention}.")
-        await ctx.author.send(f"{user.mention}'s games:")
+        await ctx.author.send(f"{user.display_name}'s games:")
 
         for message in messages:
             await ctx.author.send((box(message)))
 
     @game.command()
-    async def suggest(self, ctx: commands.Context, choice: str = None) -> None:
+    async def suggest(self, ctx: commands.Context, choice: Optional[str] = None) -> None:
         """
         List out games common to all online users (or users in voice channels)
 
@@ -287,7 +289,7 @@ class Game(commands.Cog):
                 await ctx.send(box(message))
 
     @game.command()
-    async def poll(self, ctx: commands.Context, choice: str = None) -> None:
+    async def poll(self, ctx: commands.Context, choice: Optional[str] = None) -> None:
         """
         Poll from the common games of all online users (or users in voice channels)
 
@@ -324,12 +326,20 @@ class Game(commands.Cog):
         await ctx.send("The Steam API key has been successfully added. Delete the previous message for your own safety!")
 
     @game.command()
-    async def steamsync(self, ctx: commands.Context, steam_id: str, user: discord.Member = None) -> None:
+    async def steamsync(self, ctx: commands.Context, steam_id: str, user: Optional[discord.Member] = None) -> None:
         """
         Sync a Steam profile's games with a Discord ID
 
         steam_id: Steam Name (found in your Custom URL -> steamcommunity.com/id/<name>) or Steam ID (64-bit ID -> steamcommunity.com/profiles/<id>)
         user: If given, sync library to user, otherwise default to user of the message
+
+        Examples:
+        ```
+            [p]game steamsync Alyx
+            [p]game steamsync Alyx @Alyx
+            [p]game steamsync 76561198221914843
+            [p]game steamsync 76561198221914843 @Alyx
+        ```
         """
 
         await ctx.trigger_typing()
@@ -345,16 +355,16 @@ class Game(commands.Cog):
             # ...or convert given name to a 64-bit Steam ID
             steam_client = await self.get_steam_client(ctx)
 
-            if not steam_client:
+            if steam_client is None:
                 return
 
             steam_name = steam_client.ISteamUser.ResolveVanityURL(vanityurl=steam_id)
 
-            if steam_name.get("response").get("success") != 1:
+            if steam_name.get("response", {}).get("success") != 1:
                 await ctx.send(f"There was a problem syncing {user.mention}'s account with Steam ID '{steam_id}'. Please try again with the 64-bit Steam ID instead.")
                 return
 
-            steam_id_64 = steam_name.get("response").get("steamid")
+            steam_id_64 = steam_name.get("response", {}).get("steamid")
 
         await self.config.user(user).steam_id.set(steam_id_64)
 
@@ -367,40 +377,45 @@ class Game(commands.Cog):
 
         await ctx.send(f"{user.mention}'s account was synced with Steam.")
 
-    async def get_steam_client(self, ctx: commands.Context) -> WebAPI:
+    async def get_steam_client(self, ctx: commands.Context) -> Union[WebAPI, None]:
         key = await self.config.steamkey()
 
         if not key:
             await ctx.send(f"Sorry, you need a Steam API key to make requests to Steam. Use `{ctx.prefix}game steamkey` for more information.")
-            return False
+            return
 
         try:
             steam_client = WebAPI(key=key)
         except OSError:
             await ctx.send(f"There was an error connecting to Steam. Either the provided Steam key is invalid, or try again later.")
-            return False
+            return
 
         return steam_client
 
     async def get_steam_games(self, ctx: commands.Context, user: discord.Member) -> List[str]:
+        steam_games = []
         steam_id = await self.config.user(user).steam_id()
         steam_client = await self.get_steam_client(ctx)
 
-        if not steam_client:
-            return
+        if steam_client is None:
+            return steam_games
 
         user_steam_games = steam_client.IPlayerService.GetOwnedGames(steamid=steam_id, include_played_free_games=True, include_appinfo=True, appids_filter=None)
-        games = user_steam_games.get("response").get("games")
-        games = [game.get('name') for game in games]
-        return games
+        games = user_steam_games.get("response", {}).get("games")
 
-    async def get_suggestions(self, ctx: commands.Context, choice: str = None, users: List[str] = None) -> List[str]:
+        if not games:
+            return steam_games
+
+        steam_games = [game.get('name') for game in games]
+        return steam_games
+
+    async def get_suggestions(self, ctx: commands.Context, choice: Optional[str] = None, users: Optional[Sequence[str]] = None) -> List[str]:
         if not users:
             try:
                 users = await self.get_users(ctx, choice)
             except MemberNotInVoiceChannelError:
                 await ctx.send("You need to be in a voice channel for this to work")
-                return
+                return []
 
         all_user_data = await self.config.all_users()
         users_game_list = [all_user_data.get(user, {}).get("games", []) for user in users]
@@ -409,7 +424,7 @@ class Game(commands.Cog):
             suggestions = set(users_game_list[0]).intersection(*users_game_list[1:])
             return sorted(list(suggestions))
 
-    async def get_users(self, ctx: commands.Context, choice: str = None) -> List[str]:
+    async def get_users(self, ctx: commands.Context, choice: Optional[str] = None) -> List[str]:
         users = []
 
         if choice is None or choice.lower() == "online":
@@ -427,7 +442,7 @@ class Game(commands.Cog):
 
         return users
 
-    async def create_strawpoll(self, ctx: commands.Context, title: str, options: List[str]) -> str:
+    async def create_strawpoll(self, ctx: commands.Context, title: str, options: Sequence[str]) -> str:
         data = {
             "captcha": "false",
             "dupcheck": "normal",
