@@ -3,14 +3,9 @@
         "vjFaLk",
         "Alchez"
     ],
-    "min_bot_version": [
+    "bot_version": [
         3,
         0,
-        0
-    ],
-    "min_python_version": [
-        3,
-        8,
         0
     ],
     "description": "A cog that helps you find common games between people in a channel",
