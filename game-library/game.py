@@ -255,9 +255,11 @@ class Game(commands.Cog):
     @game.command()
     async def suggest(self, ctx: commands.Context, choice: Optional[str] = None) -> None:
         """
-        List out games common to all online users (or users in voice channels)
+        List out games common to all users in your voice channel, or all current online users
 
-        choice: Defaults to 'online'. Either 'online' (for all online users; excluding users with 'dnd' status) or 'voice' (for all users in a voice channel))
+        choice: Defaults to 'voice'. Can be either:
+            - 'online' (for all online users; honours 'dnd' status) or,
+            - 'voice' (for all users in a voice channel; doesn't honour 'dnd' status)
         """
 
         await ctx.trigger_typing()
@@ -266,34 +268,33 @@ class Game(commands.Cog):
             await ctx.send("Please enter a valid filter -> either use `online` (default) for all online users or `voice` for all users in a voice channel")
             return
 
-        if choice is None or choice.lower() in ("online", "voice"):
-            try:
-                users = await self.get_users(ctx, choice)
-            except MemberNotInVoiceChannelError:
-                await ctx.send("You need to be in a voice channel for this to work")
-                return
+        try:
+            users = await self.get_users(ctx, choice)
+        except MemberNotInVoiceChannelError:
+            await ctx.send("You need to be in a voice channel")
+            return
 
-            if len(users) <= 1:
-                await ctx.send("You need more than one person online for this to work")
-                return
+        if len(users) <= 1:
+            await ctx.send("You need more than one person online")
+            return
 
-            suggestions = await self.get_suggestions(ctx, users=users)
+        suggestions = await self.get_suggestions(ctx, users=users)
 
-            if not suggestions:
-                await ctx.send("You have exactly **zero** games in common, go buy a 4-pack!")
-                return
+        if not suggestions:
+            await ctx.send("You have exactly **zero** games in common, go buy a 4-pack!")
+            return
 
-            await ctx.send("You can play these games: \n")
-            messages = pagify("\n".join(suggestions), ['\n'])
-            for message in messages:
-                await ctx.send(box(message))
+        await ctx.send("You can play these games: \n")
+        messages = pagify("\n".join(suggestions), ['\n'])
+        for message in messages:
+            await ctx.send(box(message))
 
     @game.command()
     async def poll(self, ctx: commands.Context, choice: Optional[str] = None) -> None:
         """
         Poll from the common games of all online users (or users in voice channels)
 
-        choice: Defaults to 'online'. Either 'online' (for all online users; excluding users with 'dnd' status) or 'voice' (for all users in a voice channel))
+        choice: Defaults to 'online'. Either 'online' (for all online users; honours 'dnd' status) or 'voice' (for all users in a voice channel))
         """
 
         await ctx.trigger_typing()
@@ -427,7 +428,12 @@ class Game(commands.Cog):
     async def get_users(self, ctx: commands.Context, choice: Optional[str] = None) -> List[str]:
         users = []
 
-        if choice is None or choice.lower() == "online":
+        if choice is None:
+            try:
+                users = await self.get_users(ctx, "voice")
+            except MemberNotInVoiceChannelError:
+                users = await self.get_users(ctx, "online")
+        elif choice.lower() == "online":
             for user in ctx.message.guild.members:
                 if user.status.name in ("idle", "online") and not user.bot:
                     users.append(user.id)
