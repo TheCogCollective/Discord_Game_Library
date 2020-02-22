@@ -9,7 +9,7 @@
         0
     ],
     "description": "A cog that helps you find common games between people in a channel",
-    "install_msg": "Thank you for installing game-library! Get started with `[p]game` to see all the available options.",
+    "install_msg": "Thank you for installing gamelib! Get started with `[p]game` to see all the available options.",
     "short": "Find a common game to play",
     "requirements": [
         "aiohttp",

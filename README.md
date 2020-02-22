@@ -7,12 +7,12 @@ A Discord cog for creating user game lists, finding game list intersections, and
 ## Installation
 
 * Add this repo to your bot with `[p]repo add collective https://github.com/TheCogCollective/Discord_Game_Library`
-* Install the library cog with `[p]cog install collective game-library` (this may take a minute)
-* Finally, load the cog with `[p]load game-library`
+* Install the library cog with `[p]cog install collective gamelib` (this may take a minute)
+* Finally, load the cog with `[p]load gamelib`
 
 ## Updates
 
-You can first check for cog updates by running `[p]cog checkforupdates`. If available, you can specifically update the library cog by running `[p]cog update game-library`.
+You can first check for cog updates by running `[p]cog checkforupdates`. If available, you can specifically update the library cog by running `[p]cog update gamelib`.
 
 ## Usage
 All the following commands need to be prefixed with '[p]game'. For example, if you want to manually add a game to your library with a '!' prefix, use:
