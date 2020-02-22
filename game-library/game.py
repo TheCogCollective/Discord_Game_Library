@@ -271,7 +271,8 @@ class Game(commands.Cog):
         suggestions = await self.get_suggestions(ctx, choice)
 
         if not suggestions:
-            await ctx.send("You have exactly **zero** games in common, go buy a 4-pack!")
+            if suggestions is not None:
+                await ctx.send("You have exactly **zero** games in common, go buy a 4-pack!")
             return
 
         await ctx.send("You can play these games: \n")
@@ -298,7 +299,8 @@ class Game(commands.Cog):
         suggestions = await self.get_suggestions(ctx, choice)
 
         if not suggestions:
-            await ctx.send("You have exactly **zero** games in common, go buy a 4-pack!")
+            if suggestions is not None:
+                await ctx.send("You have exactly **zero** games in common, go buy a 4-pack!")
             return
 
         poll_id = await self.create_strawpoll(ctx, "What to play?", suggestions)
@@ -401,7 +403,7 @@ class Game(commands.Cog):
         steam_games = [game.get('name') for game in games]
         return steam_games
 
-    async def get_suggestions(self, ctx: commands.Context, choice: Optional[str] = None) -> List[str]:
+    async def get_suggestions(self, ctx: commands.Context, choice: Optional[str] = None) -> Union[List[str], None]:
         # Fetch applicable users based on user choice
         try:
             users = await self.get_users(ctx, choice)
@@ -414,11 +416,16 @@ class Game(commands.Cog):
                 return
 
         # Build the list of game suggestions
-        all_user_data = await self.config.all_users()
-        users_game_list = [all_user_data.get(user, {}).get("games", []) for user in users]
+        suggestions = []
+        user_data = await self.config.all_users()
 
-        if users_game_list:
-            suggestions = set(users_game_list[0]).intersection(*users_game_list[1:])
+        for user in users:
+            games = user_data.get(user, {}).get("games", [])
+            if games:
+                suggestions.append(games)
+
+        if suggestions:
+            suggestions = set(suggestions[0]).intersection(*suggestions[1:])
             return sorted(list(suggestions))
 
     async def get_users(self, ctx: commands.Context, choice: Optional[str] = None) -> List[str]:
